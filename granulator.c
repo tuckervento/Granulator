@@ -179,6 +179,7 @@ int main(int argc, char *argv[]) {
                     if (sizeToRead > readRemaining) { sizeToRead = readRemaining; } 
                 }
                 grainLoopCount++;
+                //change sizeToRead if EOF coming up
                 readRemaining -= sizeToRead * (1 - SEEKTHRU);
                 if (sizeToRead > readRemaining) { sizeToRead = readRemaining; printf("changing sizeToRead: %d\n", sizeToRead); }
             }
@@ -187,8 +188,7 @@ int main(int argc, char *argv[]) {
             if (LOOPMAX > 1 && loopCount != LOOPMAX) { fseek(fp, -(int)(sizeToRead*grainLoopCount), SEEK_CUR); readRemaining += sizeToRead*grainLoopCount*(1 - SEEKTHRU); }
             fpChecker = ftell(fp);
         } 
-        //change sizeToRead if EOF coming up
-        if (SEEKTHRU != 0 && readRemaining > sizeToRead && writeRemaining > 0) { fseek(fp, sizeToRead*(REPEATMAX - 1)*loopCount, SEEK_CUR); } //seekthru if set
+        if (SEEKTHRU != 0 && readRemaining > sizeToRead && writeRemaining > 0) { fseek(fp, sizeToRead*(REPEATMAX - 1)*loopCount*grainLoopCount, SEEK_CUR); } //seekthru if set
         printf("readRemaining = %u\nsizeToRead = %u\ntotalGrainCount = %u\nwriteRemaining = %u\n", readRemaining, sizeToRead, totalGrainCount, writeRemaining);
     }
     printf("\ntotalGrainCount = %u\n", totalGrainCount);
