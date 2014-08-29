@@ -15,7 +15,7 @@
     eighth parameter: loop write count: like grain #, for loops 
 */
 
-//TODO############FIX LOOPING and FIX REVERSING
+//TODO############FIX LOOPING (fixed 8/29 morning?) and FIX REVERSING
 
 #include <stdio.h>
 #include <stdint.h>
