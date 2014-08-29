@@ -1,0 +1,4 @@
+Granulator
+==========
+
+Basic granulation algorithm
