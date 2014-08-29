@@ -11,9 +11,11 @@
     fifth parameter: reverse grains: 1 or 0, reverses each grain in place, but plays forward (not working)
     sixth parameter: seek thru: 1 or 0, when used in conjunction with grain-repeating it will seek the length of data written per grain,
         and pull the next grain from that distance away in the original track.  the new track will be the same length as the original
+    seventh parameter: loop size: 1+, 1 gives no loop
+    eighth parameter: loop write count: like grain #, for loops 
 */
 
-//TODO############LOOPING (macro loop over the grains) and FIX REVERSING
+//TODO############FIX LOOPING and FIX REVERSING
 
 #include <stdio.h>
 #include <stdint.h>
@@ -21,7 +23,7 @@
 
 void reverseBuffer(int16_t p_buf[], uint32_t p_size) {
     int i = 0;
-    int j = p_size-1;
+    int j = p_size-1;//is this the source of our problem?  p_size is uint32_t and could overflow when converted to int...
     while (i < j) {
         int16_t d = p_buf[i];
         p_buf[i++] = p_buf[j];
@@ -63,21 +65,34 @@ int main(int argc, char *argv[]) {
     uint8_t _channels;
     uint32_t _sampleRate;
 
-    if (argc != 7)
-    {
-        printf("./granulator filename.wav [grain repeat #] [grain time (in whole ms)] [attack time (0-100 as percent of grain time)] [reverse grains (1 or 0)] [seek thru (1 or 0)]\n");
-        return 1;
-    }
-
     uint32_t _sizeToRead;
     uint32_t _newFileDataSize;
-    const uint8_t REPEATMAX = atoi(argv[2]);//2;
-    const uint32_t GRAINTIME = atoi(argv[3]);//8;
-    const uint8_t ATTACKTIME = atoi(argv[4]);
-    const uint8_t REVERSEGRAINS = atoi(argv[5]);
-    const uint8_t SEEKTHRU = atoi(argv[6]);
+    const uint8_t REPEATMAX = (uint8_t)atoi(argv[2]);//2;
+    const uint32_t GRAINTIME = (uint32_t)atoi(argv[3]);//8;
+    const uint8_t ATTACKTIME = (uint8_t)atoi(argv[4]);
+    const uint8_t REVERSEGRAINS = (uint8_t)atoi(argv[5]);
+    const uint8_t SEEKTHRU = (uint8_t)atoi(argv[6]);
+    const uint8_t LOOPSIZE = (uint8_t)atoi(argv[7]);
+    const uint8_t LOOPMAX = (uint8_t)atoi(argv[8]);
     uint32_t _grainSize;
     uint32_t _attackSize;
+
+    //grain loop variables
+    uint32_t readRemaining;
+    uint32_t writeRemaining;
+    uint32_t sizeToRead;
+    int16_t *grainBuffer;
+    uint32_t totalGrainCount = 0;
+    uint8_t repeatCount = 0;
+    uint32_t attackCounter;
+    uint8_t loopCount = 0;
+    uint8_t grainLoopCount = 0;
+
+    if (argc != 9)
+    {
+        printf("./granulator filename.wav [grain repeat #] [grain time (in whole ms)] [attack time (0-100 as percent of grain time)] [reverse grains (1 or 0)] [seek thru (1 or 0)] [loop size (in grains) (1 for no loop)] [loop write count (1 to not loop)]\n");
+        return 1;
+    }
 
     filename = argv[1];
     printf("%s\n", filename);
@@ -85,20 +100,25 @@ int main(int argc, char *argv[]) {
     fp = fopen(filename, "r");
     fpout = fopen(outname, "w");
 
+    if (fp == NULL || fpout == NULL) {
+        printf("Problem opening files, aborting\n");
+        return 99;
+    }
+
     //read first RIFF chunk, check id and data
-    if (fread(&buf, sizeof(char), 12, fp) != 12 || strncmp(buf.riff.id, "RIFF", 4) || strncmp(buf.riff.data, "WAVE", 4)) {
+    if (fread(&buf, sizeof(char), 12, fp) != 12 || strncmp(buf.riff.id, "RIFF", 4) != 0 || strncmp(buf.riff.data, "WAVE", 4) != 0) {
         return 2;
     }
 
     _sizeToRead = buf.riff.size - 36;
-    _newFileDataSize = _sizeToRead + _sizeToRead * (REPEATMAX - 1) * (1 - SEEKTHRU);
+    _newFileDataSize = (_sizeToRead * SEEKTHRU) + (_sizeToRead * REPEATMAX * (1 - SEEKTHRU) * LOOPMAX);
     buf.riff.size = _newFileDataSize + 36;
 
     //copy header to new file
     fwrite(&buf, sizeof(char), 12, fpout);
-    printf("size: %d\n", buf.riff.size);
+    printf("size: %u\n", buf.riff.size);
     //read header of fmt chunk, verify it's the fmt chunk
-    if (fread(&buf, sizeof(char), 8, fp) != 8 || strncmp(buf.riff.id, "fmt ", 4) || (buf.riff.size != 16 && buf.riff.size != 18)) {
+    if (fread(&buf, sizeof(char), 8, fp) != 8 || strncmp(buf.riff.id, "fmt ", 4) != 0 || (buf.riff.size != 16 && buf.riff.size != 18)) {
         return 3;
     }
     //copy fmt header to new file
@@ -118,52 +138,71 @@ int main(int argc, char *argv[]) {
     _attackSize = _grainSize * (ATTACKTIME/100.0);
 
     //read header of data
-    if (fread(&header, sizeof(char), 8, fp) != 8 || strncmp(header.id, "data", 4)) {
+    if (fread(&header, sizeof(char), 8, fp) != 8 || strncmp(header.id, "data", 4) != 0) {
         return 5;
     }
     header.size = _newFileDataSize;
-    //copy header to output
+    //copy header to outputi
     fwrite(&header, 1, 8, fpout);
-    //save size of data, get bufferlength (512)
-    printf("grain remainder: %d\n", header.size%512);
-    printf("_sizeToRead = %d\n_newFileDataSize = %d\n", _sizeToRead, _newFileDataSize);
+    printf("_sizeToRead = %u\n_newFileDataSize = %u\n", _sizeToRead, _newFileDataSize);
     //variables for granulation loop
-    uint32_t readRemaining = _sizeToRead;
-    uint32_t sizeToRead = _grainSize;
-    int16_t grainBuffer[_grainSize];
-    uint32_t totalGrainCount = 0;
-    uint8_t repeatCount = 0;
-    uint32_t attackCounter;
-    uint8_t stillReading = 1;
+    readRemaining = _sizeToRead;
+    writeRemaining = _newFileDataSize;
+    sizeToRead = _grainSize;
+    grainBuffer = (int16_t*)malloc(sizeof(int16_t)*_grainSize);
+    long fpChecker = ftell(fp);
 
-    while (readRemaining > 0 && stillReading != 0) { 
-        if (fread(grainBuffer, 1, sizeToRead, fp) != sizeToRead) { return 6; }
-        if (ATTACKTIME > 0) {
-            for (attackCounter = 0; attackCounter < sizeToRead && attackCounter < _attackSize; attackCounter++) {
-                //very coarse attack...just a linear slope from 0 to 100 at _attackSize
-                grainBuffer[attackCounter] = (double)grainBuffer[attackCounter]*((double)attackCounter/(double)_attackSize);
+    while (readRemaining > 0 && writeRemaining > 0) { 
+        loopCount = 0;
+        while (loopCount < LOOPMAX && writeRemaining > 0) {
+            grainLoopCount = 0;
+            while (grainLoopCount < LOOPSIZE && writeRemaining > 0) {
+                fpChecker = ftell(fp);
+                size_t readAmt = fread(grainBuffer, 1, sizeToRead, fp);
+                fpChecker = ftell(fp);
+                if (readAmt != sizeToRead) { free(grainBuffer); printf("READ ERROR\n%zu read\n", readAmt); return 6; }
+
+                if (ATTACKTIME > 0) {
+                    for (attackCounter = 0; attackCounter < sizeToRead && attackCounter < _attackSize; attackCounter++) {
+                        //very coarse attack...just a linear slope from 0 to 100 at _attackSize
+                        grainBuffer[attackCounter] = (double)grainBuffer[attackCounter]*((double)attackCounter/(double)_attackSize);
+                    }
+                }
+
+                if (REVERSEGRAINS == 1) { reverseBuffer(grainBuffer, sizeToRead); } //not working
+                //write out grains REPEATMAX times
+                for (repeatCount = 0; repeatCount < REPEATMAX && readRemaining >= sizeToRead && writeRemaining > 0; repeatCount++) {
+                    fwrite(grainBuffer, 1, sizeToRead, fpout);
+                    writeRemaining -= sizeToRead;
+                    totalGrainCount++;
+                    readRemaining -= sizeToRead * SEEKTHRU;
+                    if (sizeToRead > readRemaining) { sizeToRead = readRemaining; } 
+                }
+                grainLoopCount++;
+                readRemaining -= sizeToRead * (1 - SEEKTHRU);
+                if (sizeToRead > readRemaining) { sizeToRead = readRemaining; printf("changing sizeToRead: %d\n", sizeToRead); }
             }
-        }
-        if (REVERSEGRAINS) { reverseBuffer(grainBuffer, sizeToRead); } //not working
-        //write out grains REPEATMAX times
-        //if (readRemaining < sizeToRead + sizeToRead * (REPEATMAX - 1) * (SEEKTHRU)) { printf("exiting grain loop early\n"); break; }
-        for (repeatCount = 0; repeatCount < REPEATMAX && readRemaining > sizeToRead; repeatCount++) {
-            fwrite(grainBuffer, 1, sizeToRead, fpout);
-            totalGrainCount++;
-            readRemaining -= sizeToRead * SEEKTHRU;
-        }
-        
-        readRemaining -= sizeToRead * (1 - SEEKTHRU);
-        if (sizeToRead > readRemaining) { sizeToRead = readRemaining; printf("%d\n", sizeToRead); } //change sizeToRead if EOF coming up
-        if (SEEKTHRU) { fseek(fp, sizeToRead, SEEK_CUR); } //seekthru if set
-        printf("readRemaining = %d\nsizeToRead = %d\ntotalGrainCount = %d\n", readRemaining, sizeToRead, totalGrainCount);
+            loopCount++;
+            fpChecker = ftell(fp);
+            if (LOOPMAX > 1 && loopCount != LOOPMAX) { fseek(fp, -(int)(sizeToRead*grainLoopCount), SEEK_CUR); readRemaining += sizeToRead*grainLoopCount*(1 - SEEKTHRU); }
+            fpChecker = ftell(fp);
+        } 
+        //change sizeToRead if EOF coming up
+        if (SEEKTHRU != 0 && readRemaining > sizeToRead && writeRemaining > 0) { fseek(fp, sizeToRead*(REPEATMAX - 1)*loopCount, SEEK_CUR); } //seekthru if set
+        printf("readRemaining = %u\nsizeToRead = %u\ntotalGrainCount = %u\nwriteRemaining = %u\n", readRemaining, sizeToRead, totalGrainCount, writeRemaining);
     }
-    printf("\ntotalGrainCount = %d\n", totalGrainCount);
-    printf("_grainSize = %d\n", _grainSize);
-    printf("_attackSize = %d\n", _attackSize);
+    printf("\ntotalGrainCount = %u\n", totalGrainCount);
+    printf("_grainSize = %u\n", _grainSize);
+    printf("_attackSize = %u\n", _attackSize);
+    printf("LOOPMAX = %u\nLOOPSIZE = %u\n", LOOPMAX, LOOPSIZE);
+    printf("_newFileDataSize = %u\n", _newFileDataSize);
+    /*when loopsize grains have been written, seek
+    backwards loopsize * grainsize and repeat loopcomunt times
+    include looping in the seek forward calculation, which should take place after the loop structure*/
 
     fclose(fp);
     fclose(fpout);
+    free(grainBuffer);
 
     return 0;
 }
