@@ -15,7 +15,8 @@
     eighth parameter: loop write count: like grain #, for loops 
 */
 
-//TODO############FIX LOOPING (fixed 8/29 morning? UPDATE: No it's still not seeking correctly when looping) and FIX REVERSING
+//TODO############ FIX REVERSING
+//LOOP SEEKING working, verified 9/2
 
 #include <stdio.h>
 #include <stdint.h>
