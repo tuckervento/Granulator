@@ -15,7 +15,7 @@
     eighth parameter: loop write count: like grain #, for loops 
 */
 
-//TODO############FIX LOOPING (fixed 8/29 morning?) and FIX REVERSING
+//TODO############FIX LOOPING (fixed 8/29 morning? UPDATE: No it's still not seeking correctly when looping) and FIX REVERSING
 
 #include <stdio.h>
 #include <stdint.h>
@@ -90,7 +90,8 @@ int main(int argc, char *argv[]) {
 
     if (argc != 9)
     {
-        printf("./granulator filename.wav [grain repeat #] [grain time (in whole ms)] [attack time (0-100 as percent of grain time)] [reverse grains (1 or 0)] [seek thru (1 or 0)] [loop size (in grains) (1 for no loop)] [loop write count (1 to not loop)]\n");
+        printf("./granulator filename.wav [grain repeat #] [grain time (in whole ms)] [attack time (0-100 as percent of grain time)] ");
+        printf("[reverse grains (1 or 0)] [seek thru (1 or 0)] [loop size (in grains) (1 for no loop)] [loop write count (1 to not loop)]\n");
         return 1;
     }
 
@@ -151,9 +152,11 @@ int main(int argc, char *argv[]) {
     sizeToRead = _grainSize;
     grainBuffer = (int16_t*)malloc(sizeof(int16_t)*_grainSize);
     long fpChecker = ftell(fp);
+    long loopPoint;
 
     while (readRemaining > 0 && writeRemaining > 0) { 
         loopCount = 0;
+        loopPoint = ftell(fp);
         while (loopCount < LOOPMAX && writeRemaining > 0) {
             grainLoopCount = 0;
             while (grainLoopCount < LOOPSIZE && writeRemaining > 0) {
@@ -185,10 +188,12 @@ int main(int argc, char *argv[]) {
             }
             loopCount++;
             fpChecker = ftell(fp);
-            if (LOOPMAX > 1 && loopCount != LOOPMAX) { fseek(fp, -(int)(sizeToRead*grainLoopCount), SEEK_CUR); readRemaining += sizeToRead*grainLoopCount*(1 - SEEKTHRU); }
+            //instead of having a state-based loop/seek could we do this every time and handle it afterwards..
+            if (LOOPMAX > 1 && loopCount != LOOPMAX)
+                { fseek(fp, loopPoint, SEEK_SET); readRemaining += sizeToRead*grainLoopCount*(1 - SEEKTHRU); }
             fpChecker = ftell(fp);
         } 
-        if (SEEKTHRU != 0 && readRemaining > sizeToRead && writeRemaining > 0) { fseek(fp, sizeToRead*(REPEATMAX - 1)*loopCount*grainLoopCount, SEEK_CUR); } //seekthru if set
+        if (SEEKTHRU != 0 && readRemaining > sizeToRead && writeRemaining > 0) { fseek(fp, ftell(fpout), SEEK_SET); } //seekthru if set
         printf("readRemaining = %u\nsizeToRead = %u\ntotalGrainCount = %u\nwriteRemaining = %u\n", readRemaining, sizeToRead, totalGrainCount, writeRemaining);
     }
     printf("\ntotalGrainCount = %u\n", totalGrainCount);
@@ -197,7 +202,7 @@ int main(int argc, char *argv[]) {
     printf("LOOPMAX = %u\nLOOPSIZE = %u\n", LOOPMAX, LOOPSIZE);
     printf("_newFileDataSize = %u\n", _newFileDataSize);
     /*when loopsize grains have been written, seek
-    backwards loopsize * grainsize and repeat loopcomunt times
+    backwards loopsize * grainsize and repeat loopcount times
     include looping in the seek forward calculation, which should take place after the loop structure*/
 
     fclose(fp);
