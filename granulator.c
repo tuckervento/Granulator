@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 void reverseBuffer(int16_t p_buf[], uint32_t p_size) {
     int i = 0;
@@ -58,7 +59,8 @@ int main(int argc, char *argv[]) {
     //const int BUFFERLEN = 512;
 
     char *filename;
-    char *outname = "processed.wav";
+    char *outfilename;
+    char *outext;
     FILE *fp;
     FILE *fpout;
 
@@ -96,11 +98,22 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    //formatting output filename
+    outfilename = malloc(100);
+    outext = malloc(100);
+    sprintf(outext, "_%sr%sms%sa%srev%ss%sls%slc.wav", argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], argv[8]);
+    strncat(outfilename, argv[1], (strlen(argv[1]) - 4));
+    strcat(outfilename, outext);
+
     filename = argv[1];
-    printf("%s\n", filename);
+    printf("INPUT: %s\n", filename);
+    printf("OUTPUT: %s\n", outfilename);
 
     fp = fopen(filename, "r");
-    fpout = fopen(outname, "w");
+    fpout = fopen(outfilename, "w");
+
+    free(outfilename);
+    free(outext);
 
     if (fp == NULL || fpout == NULL) {
         printf("Problem opening files, aborting\n");
