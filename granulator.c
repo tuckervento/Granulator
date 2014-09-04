@@ -24,12 +24,16 @@
 #include <string.h>
 
 void reverseBuffer(int16_t p_buf[], uint32_t p_size) {
-    int i = 0;
-    int j = p_size-1;//is this the source of our problem?  p_size is uint32_t and could overflow when converted to int...
-    while (i < j) {
+    unsigned int i = 0;
+    unsigned int j = p_size-2;//is this the source of our problem?  p_size is uint32_t and could overflow when converted to int...
+    while (i < j) { //sample frame is 2 samples (stereo, L/R) so we should move two at once?
         int16_t d = p_buf[i];
-        p_buf[i++] = p_buf[j];
-        p_buf[j--] = d;
+        p_buf[i++] = p_buf[j]; //i is now at second index
+        p_buf[j++] = d; //j is now at second index
+        d = p_buf[i];
+        p_buf[i++] = p_buf[j]; //i is now at first index of next sample
+        p_buf[j--] = d; //j is now at first index
+        j -= 2; //j is now at first index of next sample
     }
 }
 
@@ -112,16 +116,24 @@ int main(int argc, char *argv[]) {
     fp = fopen(filename, "r");
     fpout = fopen(outfilename, "w");
 
-    free(outfilename);
     free(outext);
 
     if (fp == NULL || fpout == NULL) {
         printf("Problem opening files, aborting\n");
+        fclose(fp);
+        fclose(fpout);
+        remove(outfilename);
+        free(outfilename);
         return 99;
     }
 
     //read first RIFF chunk, check id and data
     if (fread(&buf, sizeof(char), 12, fp) != 12 || strncmp(buf.riff.id, "RIFF", 4) != 0 || strncmp(buf.riff.data, "WAVE", 4) != 0) {
+        printf("ERROR: in reading RIFF chunk\n");
+        fclose(fp);
+        fclose(fpout);
+        remove(outfilename);
+        free(outfilename);
         return 2;
     }
 
@@ -134,12 +146,22 @@ int main(int argc, char *argv[]) {
     printf("size: %u\n", buf.riff.size);
     //read header of fmt chunk, verify it's the fmt chunk
     if (fread(&buf, sizeof(char), 8, fp) != 8 || strncmp(buf.riff.id, "fmt ", 4) != 0 || (buf.riff.size != 16 && buf.riff.size != 18)) {
+        printf("ERROR: in reading header of fmt chunk\n");
+        fclose(fp);
+        fclose(fpout);
+        remove(outfilename);
+        free(outfilename);
         return 3;
     }
     //copy fmt header to new file
     fwrite(&buf, sizeof(char), 8, fpout);
     //get fmt
     if (fread(&buf, sizeof(char), buf.riff.size, fp) != 16) {
+        printf("ERROR: in reading fmt chunk\n");
+        fclose(fp);
+        fclose(fpout);
+        remove(outfilename);
+        free(outfilename);
         return 4;
     }
     //save fmt
@@ -147,6 +169,16 @@ int main(int argc, char *argv[]) {
 
     //hold onto important values
     _bitsPerSample = buf.fmt.bitsPerSample;
+
+    if (_bitsPerSample != 16) {
+        printf("ERROR: %u bits per sample | ONLY 16-BIT IS ALLOWED\n", _bitsPerSample);
+        fclose(fp);
+        fclose(fpout);
+        remove(outfilename);
+        free(outfilename);
+        return 7;
+    }
+
     _channels = buf.fmt.channels;
     _sampleRate = buf.fmt.sampleRate;
     _grainSize = (buf.fmt.bytesPerSecond/1000*GRAINTIME);
@@ -154,6 +186,11 @@ int main(int argc, char *argv[]) {
 
     //read header of data
     if (fread(&header, sizeof(char), 8, fp) != 8 || strncmp(header.id, "data", 4) != 0) {
+        printf("ERROR: in data header reading\n");
+        fclose(fp);
+        fclose(fpout);
+        remove(outfilename);
+        free(outfilename);
         return 5;
     }
     header.size = _newFileDataSize;
