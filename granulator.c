@@ -1,5 +1,4 @@
-/*
-    Written by Tucker Vento
+/*  Written by Tucker Vento
 
     Command line granulation processing
     Outputs a file called processed.wav
@@ -12,8 +11,7 @@
     sixth parameter: seek thru: 1 or 0, when used in conjunction with grain-repeating it will seek the length of data written per grain,
         and pull the next grain from that distance away in the original track.  the new track will be the same length as the original
     seventh parameter: loop size: 1+, 1 gives no loop
-    eighth parameter: loop write count: like grain #, for loops 
-*/
+    eighth parameter: loop write count: like grain #, for loops */
 
 //TODO############ FIX REVERSING
 //LOOP SEEKING working, verified 9/2
@@ -60,20 +58,12 @@ int main(int argc, char *argv[]) {
         uint32_t size;
     } header;
 
-    //const int BUFFERLEN = 512;
-
     char *filename;
     char *outfilename;
     char *outext;
     FILE *fp;
     FILE *fpout;
 
-    uint8_t _bitsPerSample;
-    uint8_t _channels;
-    uint32_t _sampleRate;
-
-    uint32_t _sizeToRead;
-    uint32_t _newFileDataSize;
     const uint8_t REPEATMAX = (uint8_t)atoi(argv[2]);//2;
     const uint32_t GRAINTIME = (uint32_t)atoi(argv[3]);//8;
     const uint8_t ATTACKTIME = (uint8_t)atoi(argv[4]);
@@ -81,8 +71,16 @@ int main(int argc, char *argv[]) {
     const uint8_t SEEKTHRU = (uint8_t)atoi(argv[6]);
     const uint8_t LOOPSIZE = (uint8_t)atoi(argv[7]);
     const uint8_t LOOPMAX = (uint8_t)atoi(argv[8]);
+
+    uint8_t _bitsPerSample;
+    uint8_t _channels;
+    uint32_t _sampleRate;
+    uint32_t _sizeToRead;
+    uint32_t _newFileDataSize;
     uint32_t _grainSize;
     uint32_t _attackSize;
+    uint8_t _sampleSize;
+    uint32_t _actualGrainTime;
 
     //grain loop variables
     uint32_t readRemaining;
@@ -110,18 +108,23 @@ int main(int argc, char *argv[]) {
     strcat(outfilename, outext);
 
     filename = argv[1];
-    printf("INPUT: %s\n", filename);
-    printf("OUTPUT: %s\n", outfilename);
+    printf("INPUT: %s\nOUTPUT: %s\n", filename, outfilename);
 
     fp = fopen(filename, "r");
     fpout = fopen(outfilename, "w");
 
     free(outext);
 
-    if (fp == NULL || fpout == NULL) {
-        printf("Problem opening files, aborting\n");
-        fclose(fp);
+    if (fp == NULL) {
+        printf("Problem opening input file, aborting\n");
         fclose(fpout);
+        remove(outfilename);
+        free(outfilename);
+        return 98;
+    }
+    else if (fpout == NULL) {
+        printf("Problem opening output file, aborting\n");
+        fclose(fp);
         remove(outfilename);
         free(outfilename);
         return 99;
@@ -183,6 +186,19 @@ int main(int argc, char *argv[]) {
     _sampleRate = buf.fmt.sampleRate;
     _grainSize = (buf.fmt.bytesPerSecond/1000*GRAINTIME);
     _attackSize = _grainSize * (ATTACKTIME/100.0);
+    _sampleSize = _channels * _bitsPerSample / 8; //in bytes, should be 4
+
+    if (_sampleSize != 4) {
+        printf("ERROR: %u channels and %u bits per sample; needs to be 2 and 16\n", _channels, _bitsPerSample);
+        fclose(fp);
+        fclose(fpout);
+        remove(outfilename);
+        free(outfilename);
+        return 216;
+    }
+
+    _grainSize = _grainSize - (_grainSize % _sampleSize);
+    _actualGrainTime = _grainSize/(buf.fmt.bytesPerSecond/1000);
 
     //read header of data
     if (fread(&header, sizeof(char), 8, fp) != 8 || strncmp(header.id, "data", 4) != 0) {
@@ -194,7 +210,7 @@ int main(int argc, char *argv[]) {
         return 5;
     }
     header.size = _newFileDataSize;
-    //copy header to outputi
+    //copy header to output
     fwrite(&header, 1, 8, fpout);
     printf("_sizeToRead = %u\n_newFileDataSize = %u\n", _sizeToRead, _newFileDataSize);
     //variables for granulation loop
@@ -249,6 +265,7 @@ int main(int argc, char *argv[]) {
     }
     printf("\ntotalGrainCount = %u\n", totalGrainCount);
     printf("_grainSize = %u\n", _grainSize);
+    printf("_actualGrainTime = %u\n", _actualGrainTime);
     printf("_attackSize = %u\n", _attackSize);
     printf("LOOPMAX = %u\nLOOPSIZE = %u\n", LOOPMAX, LOOPSIZE);
     printf("_newFileDataSize = %u\n", _newFileDataSize);
@@ -259,6 +276,7 @@ int main(int argc, char *argv[]) {
     fclose(fp);
     fclose(fpout);
     free(grainBuffer);
+    free(outfilename);
 
     return 0;
 }
