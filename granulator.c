@@ -13,7 +13,7 @@
     seventh parameter: loop size: 1+, 1 gives no loop
     eighth parameter: loop write count: like grain #, for loops */
 
-//TODO############ FIX REVERSING
+//TODO############ "TIMELINE"
 //LOOP SEEKING working, verified 9/2
 
 #include <stdio.h>
@@ -21,15 +21,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-void reverseBuffer(int16_t p_buf[], uint32_t p_size) {
+void reverseBuffer(int16_t* p_buf, uint32_t p_size) {
     unsigned int i = 0;
-    unsigned int j = p_size-2;//is this the source of our problem?  p_size is uint32_t and could overflow when converted to int...
+    unsigned int j = p_size-2;
+    printf("i: %u; j: %u; p_size: %u; p_buf[i]: %d; p_buf[j]: %d\n", i, j, p_size, p_buf[i], p_buf[j]);
     while (i < j) { //sample frame is 2 samples (stereo, L/R) so we should move two at once?
         int16_t d = p_buf[i];
         p_buf[i++] = p_buf[j]; //i is now at second index
+        //if (p_buf[j] != 0) { printf("swapping %d with %d\n", d, p_buf[j]); }
         p_buf[j++] = d; //j is now at second index
+
         d = p_buf[i];
         p_buf[i++] = p_buf[j]; //i is now at first index of next sample
+        //if (p_buf[j] != 0) { printf("second swapping %d with %d\n", d, p_buf[j]); }
         p_buf[j--] = d; //j is now at first index
         j -= 2; //j is now at first index of next sample
     }
@@ -184,8 +188,7 @@ int main(int argc, char *argv[]) {
 
     _channels = buf.fmt.channels;
     _sampleRate = buf.fmt.sampleRate;
-    _grainSize = (buf.fmt.bytesPerSecond/1000*GRAINTIME);
-    _attackSize = _grainSize * (ATTACKTIME/100.0);
+    _grainSize = (buf.fmt.bytesPerSecond/1000*GRAINTIME); //we get _grainSize by multiplying time by bytes/ms, in bytes
     _sampleSize = _channels * _bitsPerSample / 8; //in bytes, should be 4
 
     if (_sampleSize != 4) {
@@ -198,6 +201,7 @@ int main(int argc, char *argv[]) {
     }
 
     _grainSize = _grainSize - (_grainSize % _sampleSize);
+    _attackSize = _grainSize * (ATTACKTIME/100.0);
     _actualGrainTime = _grainSize/(buf.fmt.bytesPerSecond/1000);
 
     //read header of data
@@ -217,7 +221,7 @@ int main(int argc, char *argv[]) {
     readRemaining = _sizeToRead;
     writeRemaining = _newFileDataSize;
     sizeToRead = _grainSize;
-    grainBuffer = (int16_t*)malloc(sizeof(int16_t)*_grainSize);
+    grainBuffer = (int16_t*)malloc(sizeof(int16_t)*(_grainSize/2));//16-bit audio, samples are 2 bytes
     long fpChecker = ftell(fp);
     long loopPoint;
 
@@ -238,8 +242,9 @@ int main(int argc, char *argv[]) {
                         grainBuffer[attackCounter] = (double)grainBuffer[attackCounter]*((double)attackCounter/(double)_attackSize);
                     }
                 }
+                else { printf("NO ATTACK\n"); }
 
-                if (REVERSEGRAINS == 1) { reverseBuffer(grainBuffer, sizeToRead); } //not working
+                if (REVERSEGRAINS == 1) { reverseBuffer(grainBuffer, sizeToRead/2); }
                 //write out grains REPEATMAX times
                 for (repeatCount = 0; repeatCount < REPEATMAX && readRemaining >= sizeToRead && writeRemaining > 0; repeatCount++) {
                     fwrite(grainBuffer, 1, sizeToRead, fpout);
