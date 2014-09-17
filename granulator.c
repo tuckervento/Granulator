@@ -13,8 +13,12 @@
     seventh parameter: loop size: 1+, 1 gives no loop
     eighth parameter: loop write count: like grain #, for loops */
 
-//TODO############ "TIMELINE"
-//LOOP SEEKING working, verified 9/2
+// the purpose of this branch is to test doing reads one sample (or some small chunk) at a time
+// the goal of this is to reduce memory usage, while testing the performance impact
+// in addition, this might enable easier looping/seeking, as we only have to worry about a pointer, offsets, and minimal samples
+// finally, this could allow a simpler implementation of grain density
+
+// each feature might have to be separately re-written...
 
 #include <stdio.h>
 #include <stdint.h>
@@ -90,7 +94,8 @@ int main(int argc, char *argv[]) {
     uint32_t readRemaining;
     uint32_t writeRemaining;
     uint32_t sizeToRead;
-    int16_t *grainBuffer;
+    int16_t leftSample, rightSample;
+    uint32_t stereoSampleCount = 0;
     uint32_t totalGrainCount = 0;
     uint8_t repeatCount = 0;
     uint32_t attackCounter;
@@ -188,7 +193,7 @@ int main(int argc, char *argv[]) {
 
     _channels = buf.fmt.channels;
     _sampleRate = buf.fmt.sampleRate;
-    _grainSize = (buf.fmt.bytesPerSecond/1000*GRAINTIME); //we get _grainSize by multiplying time by bytes/ms, in bytes
+    _grainSize = (buf.fmt.bytesPerSecond*GRAINTIME/1000); //we get _grainSize by multiplying time by bytes/ms, in bytes
     _sampleSize = _channels * _bitsPerSample / 8; //in bytes, should be 4
 
     if (_sampleSize != 4) {
@@ -221,10 +226,27 @@ int main(int argc, char *argv[]) {
     readRemaining = _sizeToRead;
     writeRemaining = _newFileDataSize;
     sizeToRead = _grainSize;
-    grainBuffer = (int16_t*)malloc(sizeof(int16_t)*(_grainSize/2));//16-bit audio, samples are 2 bytes
     long fpChecker = ftell(fp);
     long loopPoint;
 
+    while (readRemaining > 0) {
+        while (sizeToRead > 0 && readRemaining > 0) {
+            fread(&leftSample, 2, 1, fp);
+            fread(&rightSample, 2, 1, fp);
+            fwrite(&leftSample, 2, 1, fpout);
+            fwrite(&rightSample, 2, 1, fpout);
+            sizeToRead -= 4;
+            readRemaining -= 4;
+        }
+        repeatCount++;
+        sizeToRead = _grainSize;
+        if (repeatCount < REPEATMAX) { fseek(fp, -sizeToRead, SEEK_CUR); readRemaining += sizeToRead; }
+        else {
+            repeatCount == 0;
+            if (SEEKTHRU != 0) { fseek(fp, ftell(fpout), SEEK_SET); }
+        }
+    }
+/*
     while (readRemaining > 0 && writeRemaining > 0) { 
         loopCount = 0;
         loopPoint = ftell(fp);
@@ -267,7 +289,7 @@ int main(int argc, char *argv[]) {
         } 
         if (SEEKTHRU != 0 && readRemaining > sizeToRead && writeRemaining > 0) { fseek(fp, ftell(fpout), SEEK_SET); } //seekthru if set
         printf("readRemaining = %u\nsizeToRead = %u\ntotalGrainCount = %u\nwriteRemaining = %u\n", readRemaining, sizeToRead, totalGrainCount, writeRemaining);
-    }
+    }*/
     printf("\ntotalGrainCount = %u\n", totalGrainCount);
     printf("_grainSize = %u\n", _grainSize);
     printf("_actualGrainTime = %u\n", _actualGrainTime);
@@ -280,7 +302,6 @@ int main(int argc, char *argv[]) {
 
     fclose(fp);
     fclose(fpout);
-    free(grainBuffer);
     free(outfilename);
 
     return 0;
