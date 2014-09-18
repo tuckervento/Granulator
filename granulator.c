@@ -91,8 +91,6 @@ int main(int argc, char *argv[]) {
     uint32_t _actualGrainTime;
 
     //grain loop variables
-    uint32_t readRemaining;
-    uint32_t writeRemaining;
     uint32_t sizeToRead;
     int16_t leftSample, rightSample;
     uint32_t stereoSampleCount = 0;
@@ -119,8 +117,8 @@ int main(int argc, char *argv[]) {
     filename = argv[1];
     printf("INPUT: %s\nOUTPUT: %s\n", filename, outfilename);
 
-    fp = fopen(filename, "r");
-    fpout = fopen(outfilename, "w");
+    fp = fopen(filename, "rb");
+    fpout = fopen(outfilename, "wb");
 
     free(outext);
 
@@ -223,27 +221,25 @@ int main(int argc, char *argv[]) {
     fwrite(&header, 1, 8, fpout);
     printf("_sizeToRead = %u\n_newFileDataSize = %u\n", _sizeToRead, _newFileDataSize);
     //variables for granulation loop
-    readRemaining = _sizeToRead;
-    writeRemaining = _newFileDataSize;
     sizeToRead = _grainSize;
     long fpChecker = ftell(fp);
     long loopPoint;
 
-    while (readRemaining > 0) {
-        while (sizeToRead > 0 && readRemaining > 0) {
+    while (feof(fp) == 0) {
+        while (sizeToRead > 0) {
             fread(&leftSample, 2, 1, fp);
             fread(&rightSample, 2, 1, fp);
             fwrite(&leftSample, 2, 1, fpout);
             fwrite(&rightSample, 2, 1, fpout);
             sizeToRead -= 4;
-            readRemaining -= 4;
         }
         repeatCount++;
         sizeToRead = _grainSize;
-        if (repeatCount < REPEATMAX) { fseek(fp, -sizeToRead, SEEK_CUR); readRemaining += sizeToRead; }
+        if (repeatCount < REPEATMAX) { fseek(fp, fpChecker, SEEK_SET); }
         else {
-            repeatCount == 0;
-            if (SEEKTHRU != 0) { fseek(fp, ftell(fpout), SEEK_SET); }
+            repeatCount = 0;
+            if (SEEKTHRU != 0 && feof(fp) == 0) { fseek(fp, ftell(fpout), SEEK_SET); }
+            fpChecker = ftell(fp);
         }
     }
 /*
