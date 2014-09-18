@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
     }
 
     _grainSize = _grainSize - (_grainSize % _sampleSize);
-    _attackSize = _grainSize * (ATTACKTIME/100.0);
+    _attackSize = _grainSize * (ATTACKTIME/100.0) / 4; //divide by four (2*2) to do the attack by stereo sample instead of by byte
     _actualGrainTime = _grainSize/(buf.fmt.bytesPerSecond/1000);
 
     //read header of data
@@ -222,6 +222,7 @@ int main(int argc, char *argv[]) {
     printf("_sizeToRead = %u\n_newFileDataSize = %u\n", _sizeToRead, _newFileDataSize);
     //variables for granulation loop
     sizeToRead = _grainSize;
+    attackCounter = 0;
     long fpChecker = ftell(fp);
     long loopPoint;
 
@@ -229,10 +230,16 @@ int main(int argc, char *argv[]) {
         while (sizeToRead > 0) {
             fread(&leftSample, 2, 1, fp);
             fread(&rightSample, 2, 1, fp);
+            if (attackCounter < _attackSize) {
+                leftSample = (double)leftSample * ((double)attackCounter/(double)_attackSize);
+                rightSample = (double)rightSample * ((double)attackCounter/(double)_attackSize);
+                attackCounter++;
+            }
             fwrite(&leftSample, 2, 1, fpout);
             fwrite(&rightSample, 2, 1, fpout);
             sizeToRead -= 4;
         }
+        attackCounter = 0;
         repeatCount++;
         sizeToRead = _grainSize;
         if (repeatCount < REPEATMAX) { fseek(fp, fpChecker, SEEK_SET); }
