@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
     sizeToRead = _grainSize;
     attackCounter = 0;
     long fpChecker = ftell(fp);
-    long loopPoint;
+    long loopPoint = fpChecker;
 
     while (feof(fp) == 0) {
         while (sizeToRead > 0) {
@@ -245,7 +245,17 @@ int main(int argc, char *argv[]) {
         if (repeatCount < REPEATMAX) { fseek(fp, fpChecker, SEEK_SET); }
         else {
             repeatCount = 0;
-            if (SEEKTHRU != 0 && feof(fp) == 0) { fseek(fp, ftell(fpout), SEEK_SET); }
+            grainLoopCount++;
+            if (grainLoopCount == LOOPSIZE) {
+                grainLoopCount = 0;
+                loopCount++;
+                if (loopCount < LOOPMAX) { fseek(fp, loopPoint, SEEK_SET); }
+                else {
+                    loopCount = 0;
+                    if (SEEKTHRU != 0 && feof(fp) == 0) { fseek(fp, ftell(fpout), SEEK_SET); }
+                    loopPoint = ftell(fp);
+                }
+            }
             fpChecker = ftell(fp);
         }
     }
