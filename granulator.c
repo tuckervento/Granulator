@@ -13,12 +13,7 @@
     seventh parameter: loop size: 1+, 1 gives no loop
     eighth parameter: loop write count: like grain #, for loops */
 
-// the purpose of this branch is to test doing reads one sample (or some small chunk) at a time
-// the goal of this is to reduce memory usage, while testing the performance impact
-// in addition, this might enable easier looping/seeking, as we only have to worry about a pointer, offsets, and minimal samples
-// finally, this could allow a simpler implementation of grain density
-
-// each feature might have to be separately re-written...
+//  TODO in new algo: reverse, grain density?
 
 #include <stdio.h>
 #include <stdint.h>
@@ -259,59 +254,13 @@ int main(int argc, char *argv[]) {
             fpChecker = ftell(fp);
         }
     }
-/*
-    while (readRemaining > 0 && writeRemaining > 0) { 
-        loopCount = 0;
-        loopPoint = ftell(fp);
-        while (loopCount < LOOPMAX && writeRemaining > 0) {
-            grainLoopCount = 0;
-            while (grainLoopCount < LOOPSIZE && writeRemaining > 0) {
-                fpChecker = ftell(fp);
-                size_t readAmt = fread(grainBuffer, 1, sizeToRead, fp);
-                fpChecker = ftell(fp);
-                if (readAmt != sizeToRead) { free(grainBuffer); printf("READ ERROR\n%zu read\n", readAmt); return 6; }
 
-                if (ATTACKTIME > 0) {
-                    for (attackCounter = 0; attackCounter < sizeToRead && attackCounter < _attackSize; attackCounter++) {
-                        //very coarse attack...just a linear slope from 0 to 100 at _attackSize
-                        grainBuffer[attackCounter] = (double)grainBuffer[attackCounter]*((double)attackCounter/(double)_attackSize);
-                    }
-                }
-                else { printf("NO ATTACK\n"); }
-
-                if (REVERSEGRAINS == 1) { reverseBuffer(grainBuffer, sizeToRead/2); }
-                //write out grains REPEATMAX times
-                for (repeatCount = 0; repeatCount < REPEATMAX && readRemaining >= sizeToRead && writeRemaining > 0; repeatCount++) {
-                    fwrite(grainBuffer, 1, sizeToRead, fpout);
-                    writeRemaining -= sizeToRead;
-                    totalGrainCount++;
-                    readRemaining -= sizeToRead * SEEKTHRU;
-                    if (sizeToRead > readRemaining) { sizeToRead = readRemaining; } 
-                }
-                grainLoopCount++;
-                //change sizeToRead if EOF coming up
-                readRemaining -= sizeToRead * (1 - SEEKTHRU);
-                if (sizeToRead > readRemaining) { sizeToRead = readRemaining; printf("changing sizeToRead: %d\n", sizeToRead); }
-            }
-            loopCount++;
-            fpChecker = ftell(fp);
-            //instead of having a state-based loop/seek could we do this every time and handle it afterwards..
-            if (LOOPMAX > 1 && loopCount != LOOPMAX)
-                { fseek(fp, loopPoint, SEEK_SET); readRemaining += sizeToRead*grainLoopCount*(1 - SEEKTHRU); }
-            fpChecker = ftell(fp);
-        } 
-        if (SEEKTHRU != 0 && readRemaining > sizeToRead && writeRemaining > 0) { fseek(fp, ftell(fpout), SEEK_SET); } //seekthru if set
-        printf("readRemaining = %u\nsizeToRead = %u\ntotalGrainCount = %u\nwriteRemaining = %u\n", readRemaining, sizeToRead, totalGrainCount, writeRemaining);
-    }*/
     printf("\ntotalGrainCount = %u\n", totalGrainCount);
     printf("_grainSize = %u\n", _grainSize);
     printf("_actualGrainTime = %u\n", _actualGrainTime);
     printf("_attackSize = %u\n", _attackSize);
     printf("LOOPMAX = %u\nLOOPSIZE = %u\n", LOOPMAX, LOOPSIZE);
     printf("_newFileDataSize = %u\n", _newFileDataSize);
-    /*when loopsize grains have been written, seek
-    backwards loopsize * grainsize and repeat loopcount times
-    include looping in the seek forward calculation, which should take place after the loop structure*/
 
     fclose(fp);
     fclose(fpout);
