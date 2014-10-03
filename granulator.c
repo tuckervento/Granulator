@@ -67,8 +67,8 @@ int main(int argc, char *argv[]) {
     FILE *fp;
     FILE *fpout;
 
-    const uint8_t REPEATMAX = (uint8_t)atoi(argv[2]);//2;
-    const uint32_t GRAINTIME = (uint32_t)atoi(argv[3]);//8;
+    const uint8_t REPEATMAX = (uint8_t)atoi(argv[2]);
+    const uint32_t GRAINTIME = (uint32_t)atoi(argv[3]);
     const uint8_t ATTACKTIME = (uint8_t)atoi(argv[4]);
     const uint8_t REVERSEGRAINS = (uint8_t)atoi(argv[5]);
     const uint8_t SEEKTHRU = (uint8_t)atoi(argv[6]);
@@ -86,14 +86,12 @@ int main(int argc, char *argv[]) {
     uint32_t _actualGrainTime;
 
     //grain loop variables
-    uint32_t sizeToRead;
+    uint32_t sizeToRead;                //counter for the grain read loop
     int16_t leftSample, rightSample;
-    uint32_t stereoSampleCount = 0;
-    uint32_t totalGrainCount = 0;
-    uint8_t repeatCount = 0;
-    uint32_t attackCounter;
-    uint8_t loopCount = 0;
-    uint8_t grainLoopCount = 0;
+    uint8_t repeatCount = 0;            //counter for repeating grains
+    uint32_t attackCounter;             //counter for attack calculation
+    uint8_t loopCount = 0;              //counter for macro loop
+    uint8_t grainLoopCount = 0;         //counter for grains within macro loop
 
     if (argc != 9)
     {
@@ -102,7 +100,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    //formatting output filename
+    //formatting output filename to include parameter values
     outfilename = malloc(100);
     outext = malloc(100);
     sprintf(outext, "_%sr%sms%sa%srev%ss%sls%slc.wav", argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], argv[8]);
@@ -186,7 +184,7 @@ int main(int argc, char *argv[]) {
 
     _channels = buf.fmt.channels;
     _sampleRate = buf.fmt.sampleRate;
-    _grainSize = (buf.fmt.bytesPerSecond*GRAINTIME/1000); //we get _grainSize by multiplying time by bytes/ms, in bytes
+    _grainSize = (buf.fmt.bytesPerSecond*GRAINTIME/1000); //in bytes; we get _grainSize by multiplying time by bytes/ms
     _sampleSize = _channels * _bitsPerSample / 8; //in bytes, should be 4
 
     if (_sampleSize != 4) {
@@ -200,7 +198,7 @@ int main(int argc, char *argv[]) {
 
     _grainSize = _grainSize - (_grainSize % _sampleSize);
     _attackSize = _grainSize * (ATTACKTIME/100.0) / 4; //divide by four (2*2) to do the attack by stereo sample instead of by byte
-    _actualGrainTime = _grainSize/(buf.fmt.bytesPerSecond/1000);
+    _actualGrainTime = _grainSize/(buf.fmt.bytesPerSecond/1000); //is this even useful?  in case the original grain size is too "fine"
 
     //read header of data
     if (fread(&header, sizeof(char), 8, fp) != 8 || strncmp(header.id, "data", 4) != 0) {
@@ -218,11 +216,11 @@ int main(int argc, char *argv[]) {
     //variables for granulation loop
     sizeToRead = _grainSize;
     attackCounter = 0;
-    long fpChecker = ftell(fp);
+    long fpChecker = ftell(fp); //this keeps track of the read point for the current grain
     long loopPoint = fpChecker;
 
     while (feof(fp) == 0) {
-        while (sizeToRead > 0) {
+        while (sizeToRead > 0) {    //grain read loop
             fread(&leftSample, 2, 1, fp);
             fread(&rightSample, 2, 1, fp);
             if (attackCounter < _attackSize) {
@@ -237,16 +235,20 @@ int main(int argc, char *argv[]) {
         attackCounter = 0;
         repeatCount++;
         sizeToRead = _grainSize;
+        //seek back if we need to repeat
         if (repeatCount < REPEATMAX) { fseek(fp, fpChecker, SEEK_SET); }
-        else {
+        else {  //otherwise, check the macro loop
             repeatCount = 0;
             grainLoopCount++;
             if (grainLoopCount == LOOPSIZE) {
                 grainLoopCount = 0;
                 loopCount++;
+                //check if we need to loop back to the start of the lop point
                 if (loopCount < LOOPMAX) { fseek(fp, loopPoint, SEEK_SET); }
                 else {
                     loopCount = 0;
+                    //only seeking at the end of the macro loop for now
+                    //maybe we could do this all over to make it more interesting?
                     if (SEEKTHRU != 0 && feof(fp) == 0) { fseek(fp, ftell(fpout), SEEK_SET); }
                     loopPoint = ftell(fp);
                 }
@@ -255,8 +257,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("\ntotalGrainCount = %u\n", totalGrainCount);
-    printf("_grainSize = %u\n", _grainSize);
+    printf("\n_grainSize = %u\n", _grainSize);
     printf("_actualGrainTime = %u\n", _actualGrainTime);
     printf("_attackSize = %u\n", _attackSize);
     printf("LOOPMAX = %u\nLOOPSIZE = %u\n", LOOPMAX, LOOPSIZE);
