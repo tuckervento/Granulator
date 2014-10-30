@@ -246,6 +246,12 @@ int main(int argc, char *argv[]) {
             fwrite(&rightSample, 2, 1, fpout);
             intervalCounter++;
             if ((intervalCounter == intervalValue) && feof(fp) == 0) {
+                //TODO:
+                //  Move the interval calculation stuff to the top of this if block
+                //  Refactor timestretchtest to minimize overhead
+                //  Create new variables for the duplicate state
+                //  Calculate sample scaling factor to create n samples before "futureXSample"
+                //  Create duplicating while loop that uses scaling factor
                 fread(&futureLeftSample, 2, 1, fp);
                 fread(&futureRightSample, 2, 1, fp);
                 leftSample = (((double)futureLeftSample*((double)attackCounter/(double)_attackSize)) - leftSample) / 2 + leftSample;
