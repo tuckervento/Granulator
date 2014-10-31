@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     uint8_t _bitsPerSample;
     uint8_t _channels;
     uint32_t _sampleRate;
-    uint32_t _sizeToRead;
+    uint32_t _totalSizeToRead;
     uint32_t _newFileDataSize;
     uint32_t _grainSize;
     uint32_t _attackSize;
@@ -89,12 +89,12 @@ int main(int argc, char *argv[]) {
 
     uint8_t timestretchModValue;
 
-    double intervalAverage, interval;
-    uint8_t intervalValue, intervalCount = 0, intervalCounter = 0;
+    //timestretch variables
+    double intervalAverage, interval, leftScalingFactor, rightScalingFactor;
+    uint8_t intervalValue, intervalCount = 0, intervalCounter = 0, duplicateCount, duplicateCounter = 0, duplicateBase;
     uint16_t intervalSum = 0;
 
     //grain loop variables
-    uint32_t sizeToRead;                //counter for the grain read loop
     uint32_t sampleCounter = 0;
     uint32_t samplesToRead;
     int16_t leftSample, rightSample, futureLeftSample, futureRightSample;
@@ -150,8 +150,8 @@ int main(int argc, char *argv[]) {
         return 2;
     }
 
-    _sizeToRead = buf.riff.size - 36;
-    _newFileDataSize = (_sizeToRead * SEEKTHRU) + (_sizeToRead * REPEATMAX * (1 - SEEKTHRU) * LOOPMAX)*(100.0/(double)TIMESTRETCH);
+    _totalSizeToRead = buf.riff.size - 36;
+    _newFileDataSize = (_totalSizeToRead * SEEKTHRU) + (_totalSizeToRead * REPEATMAX * (1 - SEEKTHRU) * LOOPMAX)*(100.0/(double)TIMESTRETCH);
     buf.riff.size = _newFileDataSize + 36;
 
     //copy header to new file
@@ -222,19 +222,24 @@ int main(int argc, char *argv[]) {
     header.size = _newFileDataSize;
     //copy header to output
     fwrite(&header, 1, 8, fpout);
-    printf("_sizeToRead = %u\n_newFileDataSize = %u\n", _sizeToRead, _newFileDataSize);
+    printf("_totalSizeToRead = %u\n_newFileDataSize = %u\n", _totalSizeToRead, _newFileDataSize);
     //variables for granulation loop
-    sizeToRead = _grainSize;
     samplesToRead = _grainSize/_sampleSize;
     attackCounter = 0;
     long fpChecker = ftell(fp); //this keeps track of the read point for the current grain
     long loopPoint = fpChecker;
+
     interval = ((double) TIMESTRETCH / (100.0 - TIMESTRETCH));
+    if (interval > 0 && 1.0/interval >= 1.0) { //this should calculate the duplicateBase for each sample, for <50 timestretch
+        duplicateBase = floor(1.0/interval);
+        interval = 1.0/((1.0/interval)-duplicateBase);
+    }
     intervalValue = ceil(interval);
     printf("interval = %f\n", interval);
     printf("samplesToRead: %u\n", samplesToRead);
+
     while (feof(fp) == 0) {
-        for (sampleCounter = 0; sampleCounter < samplesToRead; sampleCounter++) { //while (sizeToRead > 0) {    //grain read loop
+        for (sampleCounter = 0; sampleCounter < samplesToRead; sampleCounter++) { //grain read loop
             fread(&leftSample, 2, 1, fp);
             fread(&rightSample, 2, 1, fp);
             if (attackCounter < _attackSize) {
@@ -244,39 +249,44 @@ int main(int argc, char *argv[]) {
             }
             fwrite(&leftSample, 2, 1, fpout);
             fwrite(&rightSample, 2, 1, fpout);
+
             intervalCounter++;
+            duplicateCount = duplicateBase;
+
             if ((intervalCounter == intervalValue) && feof(fp) == 0) {
                 //TODO:
-                //  Move the interval calculation stuff to the top of this if block
-                //  Refactor timestretchtest to minimize overhead
-                //  Create new variables for the duplicate state
-                //  Calculate sample scaling factor to create n samples before "futureXSample"
-                //  Create duplicating while loop that uses scaling factor
-                fread(&futureLeftSample, 2, 1, fp);
-                fread(&futureRightSample, 2, 1, fp);
-                leftSample = (((double)futureLeftSample*((double)attackCounter/(double)_attackSize)) - leftSample) / 2 + leftSample;
-                rightSample = (((double)futureRightSample*((double)attackCounter/(double)_attackSize)) - rightSample) / 2 + rightSample;
-                fwrite(&leftSample, 2, 1, fpout);
-                fwrite(&rightSample, 2, 1, fpout);
-                if (feof(fp) == 0) { fseek(fp, -4, SEEK_CUR); }
-
-                intervalCounter = 0;
-                //printf("here2\n");
-                if (interval - floor(interval) > 0) {
-                    printf("inhre\n");
+                //  Refactor
+                if (interval != intervalValue) {
                     intervalSum += intervalValue;
-                    //printf("here\nintervalSum = %d\ncount = %d\navg = %lf\n", intervalSum, intervalCount, intervalAverage);
                     intervalAverage = (double) intervalSum / (double) (++intervalCount);
-                    //printf("here3\n");
                     if (intervalAverage < interval && intervalValue < intervalAverage) { intervalValue++; }
                     else if (intervalAverage > interval && intervalValue > intervalAverage) { intervalValue--; }
                 }
+
+                duplicateCount++;
+                intervalCounter = 0;
             }
-            sizeToRead -= 4;
+            if (duplicateCount > 0) {
+                fread(&futureLeftSample, 2, 1, fp);
+                fread(&futureRightSample, 2, 1, fp);
+                leftScalingFactor = (((double)futureLeftSample*((double)attackCounter/(double)_attackSize)) - leftSample) / duplicateCount; 
+                rightScalingFactor = (((double)futureRightSample*((double)attackCounter/(double)_attackSize)) - rightSample) / duplicateCount;
+
+                while (duplicateCounter < duplicateCount) {
+                    leftSample += leftScalingFactor;
+                    rightSample += rightScalingFactor;
+                    fwrite(&leftSample, 2, 1, fpout);
+                    fwrite(&rightSample, 2, 1, fpout);
+                    duplicateCounter++;
+                }
+
+                if (feof(fp) == 0) { fseek(fp, -4, SEEK_CUR); }
+
+                duplicateCounter = 0;
+            }
         }
         attackCounter = 0;
         repeatCount++;
-        sizeToRead = _grainSize;
         //seek back if we need to repeat
         if (repeatCount < REPEATMAX) { fseek(fp, fpChecker, SEEK_SET); }
         else {  //otherwise, check the macro loop
