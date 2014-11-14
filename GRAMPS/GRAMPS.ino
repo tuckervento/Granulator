@@ -7,9 +7,11 @@
  *Speaker attached to ground and DAC0
 */
 
-#include <SD.h>
+#include <SdFat.h>
 #include <SPI.h>
 #include <Audio.h>
+
+SdFat SD;
 
 void setup()
 {
