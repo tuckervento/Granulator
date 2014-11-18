@@ -7,9 +7,11 @@
  *Speaker attached to ground and DAC0
 */
 
-#include <SD.h>
+#include <SdFat.h>
 #include <SPI.h>
 #include <Audio.h>
+
+SdFat SD;
 
 void setup()
 {
@@ -18,7 +20,7 @@ void setup()
 
   // setup SD-card
   Serial.print("Initializing SD card...");
-  if (!SD.begin(4)) {
+  if (!SD.begin(8)) {
     Serial.println(" failed!");
     return;
   }
@@ -42,7 +44,9 @@ void loop()
     Serial.println("error opening test.wav");
     while (true);
   }
-
+  //until we implement audio
+  Serial.println("Success!");
+  /*
   const int S=1024; // Number of samples to read in block
   short buffer[S];
 
@@ -68,5 +72,5 @@ void loop()
   myFile.close();
 
   Serial.println("End of file. Thank you for listening!");
-  while (true) ;
+  while (true) ;*/
 }
