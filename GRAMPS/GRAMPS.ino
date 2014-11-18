@@ -44,7 +44,9 @@ void loop()
     Serial.println("error opening test.wav");
     while (true);
   }
-
+  //until we implement audio
+  Serial.println("Success!");
+  /*
   const int S=1024; // Number of samples to read in block
   short buffer[S];
 
@@ -70,5 +72,5 @@ void loop()
   myFile.close();
 
   Serial.println("End of file. Thank you for listening!");
-  while (true) ;
+  while (true) ;*/
 }
