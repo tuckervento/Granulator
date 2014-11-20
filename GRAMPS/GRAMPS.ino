@@ -1,12 +1,3 @@
-/*
-
- Demonstrates the use of the Audio library for the Arduino Due
-
- Hardware required :
- *Arduino shield with a SD card on CS 4 (the Ethernet sheild will work)
- *Speaker attached to ground and DAC0
-*/
-
 #include <SdFat.h>
 #include <SPI.h>
 #include <Audio.h>
@@ -54,9 +45,10 @@ void loop()
   short buffer[S];
   uint16_t volume = 1023;
 
-  uint8_t attackSetting = 50, attackCounter = 0;
+  uint8_t attackSetting = 30, attackCounter = 0;
+  uint8_t releaseSetting = 30, releaseCounter = 0;
 
-  uint32_t attackSamples = S / 50;
+  uint32_t attackSamples = S / attackSetting, releaseSamples = S / releaseSetting;
 
   Serial.print("Playing");
   // until the file is not finished
@@ -66,6 +58,10 @@ void loop()
 
     for (attackCounter = 0; attackCounter < attackSamples; attackCounter++) {
       buffer[attackCounter] = (float)buffer[attackCounter]*((float)attackCounter/(float)attackSamples);
+    }
+
+    for (releaseCounter = 0; releaseCounter < releaseSamples; releaseCounter++) {
+      buffer[S-releaseCounter-1] = (float)buffer[S-releaseCounter-1]*((float)releaseCounter/(float)releaseSamples);
     }
 
     for (int i = 0; i < grainRepeat; i++) {
