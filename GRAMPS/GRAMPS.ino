@@ -35,8 +35,6 @@ void setup()
 
 void loop()
 {
-  int count=0;
-
   // open wave file from sdcard
   File myFile = SD.open("test.wav");
   if (!myFile) {
@@ -54,29 +52,28 @@ void loop()
   uint8_t grainRepeat=2;
   const uint32_t S=441*(grainTime/10); // Number of samples to read in block
   short buffer[S];
+  uint16_t volume = 1023;
+
+  uint8_t attackSetting = 50, attackCounter = 0;
+
+  uint32_t attackSamples = S / 50;
 
   Serial.print("Playing");
   // until the file is not finished
   while (myFile.available()) {
     // read from the file into buffer
     myFile.read(buffer, sizeof(buffer));
+
+    for (attackCounter = 0; attackCounter < attackSamples; attackCounter++) {
+      buffer[attackCounter] = (float)buffer[attackCounter]*((float)attackCounter/(float)attackSamples);
+    }
+
     for (int i = 0; i < grainRepeat; i++) {
       // Prepare samples
-      int volume = 1023;
       Audio.prepare(buffer, S, volume);
       // Feed samples to audio
       Audio.write(buffer, S);
-  
-      // Every 100 block print a '.'
-      count++;
-      if (count == 100) {
-        Serial.print(".");
-        count = 0;
-      }
     }
   }
   myFile.close();
-
-  Serial.println("End of file. Thank you for listening!");
-  while (true);
 }
