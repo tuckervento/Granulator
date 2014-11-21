@@ -19,8 +19,6 @@ void setup()
   // hi-speed SPI transfers
   SPI.setClockDivider(4);
 
-  // 44100 Hz stereo => 88200 sample rate
-  // 100 mSec of prebuffering.
   Audio.begin(44100, 300);
 }
 
