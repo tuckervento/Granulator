@@ -20,7 +20,7 @@ void setup()
 
   // setup SD-card
   Serial.print("Initializing SD card...");
-  if (!SD.begin(8)) {
+  if (!SD.begin(9)) {
     Serial.println(" failed!");
     return;
   }
