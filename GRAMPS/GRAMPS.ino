@@ -38,13 +38,13 @@ void loop()
   //i believe unsigned short is faster, but uint16_t is more memory conservative?
   //but i'm not sure
   uint16_t grainTime=100;
-  uint8_t grainRepeat=2;
+  uint8_t grainRepeat=4;
   const uint32_t S=441*(grainTime/10); // Number of samples to read in block
-  short buffer[S];
+  int16_t buf[S];
   uint16_t volume = 1023;
 
-  uint8_t attackSetting = 30, attackCounter = 0;
-  uint8_t releaseSetting = 30, releaseCounter = 0;
+  uint8_t attackSetting = 40, attackCounter = 0;
+  uint8_t releaseSetting = 0, releaseCounter = 0;
 
   uint32_t attackSamples = S / attackSetting, releaseSamples = S / releaseSetting;
 
@@ -52,21 +52,21 @@ void loop()
   // until the file is not finished
   while (myFile.available()) {
     // read from the file into buffer
-    myFile.read(buffer, sizeof(buffer));
+    myFile.read(buf, sizeof(buf));
 
     for (attackCounter = 0; attackCounter < attackSamples; attackCounter++) {
-      buffer[attackCounter] = (float)buffer[attackCounter]*((float)attackCounter/(float)attackSamples);
+      buf[attackCounter] = (float)buf[attackCounter]*((float)attackCounter/(float)attackSamples);
     }
 
     for (releaseCounter = 0; releaseCounter < releaseSamples; releaseCounter++) {
-      buffer[S-releaseCounter-1] = (float)buffer[S-releaseCounter-1]*((float)releaseCounter/(float)releaseSamples);
+      buf[S-releaseCounter-1] = (float)buf[S-releaseCounter-1]*((float)releaseCounter/(float)releaseSamples);
     }
 
+    Audio.prepare(buf, S, volume);
     for (int i = 0; i < grainRepeat; i++) {
       // Prepare samples
-      Audio.prepare(buffer, S, volume);
       // Feed samples to audio
-      Audio.write(buffer, S);
+      Audio.write(buf, S);
     }
   }
   myFile.close();
