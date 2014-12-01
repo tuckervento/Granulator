@@ -42,10 +42,10 @@ MuxShield::MuxShield()
     _S1 = 4;
     _S2 = 6;
     _S3 = 7;
-    _OUTMD = 8; 
-    _IOS1 = 10; 
-    _IOS2 = 11;
-    _IOS3 = 12;
+    //_OUTMD = 8;//8 is used for CS on sd 
+    //_IOS1 = 10; 
+    //_IOS2 = 11;
+    //_IOS3 = 12;
     _IO1 = A0; 
     _IO2 = A1;
     _IO3 = A2;
@@ -54,13 +54,11 @@ MuxShield::MuxShield()
     pinMode(_S1,OUTPUT);
     pinMode(_S2,OUTPUT);
     pinMode(_S3,OUTPUT);
-    pinMode(_OUTMD,OUTPUT);
-    digitalWrite(_OUTMD,LOW);
-    pinMode(_IOS1,OUTPUT);
-    pinMode(_IOS2,OUTPUT);
-    pinMode(_IOS3,OUTPUT);
-    
-    
+    //pinMode(_OUTMD,OUTPUT);
+    //digitalWrite(_OUTMD,LOW);
+    //pinMode(_IOS1,OUTPUT);
+    //pinMode(_IOS2,OUTPUT);
+    //pinMode(_IOS3,OUTPUT);
 }
 
 void MuxShield::setMode(int mux, int mode) 

@@ -16,6 +16,8 @@ void setup()
   Serial.print("Initializing SD card...");
   if (!SD.begin(8, 4)) {
     Serial.println(" failed!");
+    Serial.println(SD.card()->errorCode());
+    Serial.println(SD.card()->errorData());
     return;
   }
   Serial.println(" done.");
@@ -31,9 +33,10 @@ void setup()
 
 void checkInputs()
 {
-  while (!digitalReadMS(3, 0)) {
+  while (muxShield.digitalReadMS(3, 0)) {
     //play button is off
   }
+  Serial.println("Checked");
 }
 
 void loop()
