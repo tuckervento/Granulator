@@ -18,17 +18,11 @@ class MuxShield
 {
 public:
     MuxShield();
-    MuxShield(int S0, int S1, int S2, int S3, int OUTMD,int IOS1, int IOS2, int IOS3, int IO1, int IO2, int IO3);
-    void setMode(int mux, int mode);
-    void digitalWriteMS(int mux, int chan, int val);
-    int digitalReadMS(int mux, int chan);
-    int analogReadMS(int mux, int chan);
+    uint8_t digitalReadMS(uint8_t chan);
+    uint16_t analogReadMS(uint8_t chan);
     
 private:
-    int _S0,_S1,_S2,_S3,_OUTMD,_IOS1,_IOS2,_IOS3,_IO1,_IO2,_IO3;
-    int _LE1,_LE2,_LE3,_M1,_M2,_M3;    
-    
-    
+    uint8_t _S0,_S1,_S2,_S3,_IO1,_IO2,_IO3;
 };
 
 #endif

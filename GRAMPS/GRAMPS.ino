@@ -25,15 +25,11 @@ void setup()
   SPI.setClockDivider(4);
 
   Audio.begin(44100, 300);
-
-  //configure mux rows
-  muxShield.setMode(2, ANALOG_IN);
-  muxShield.setMode(3, DIGITAL_IN);
 }
 
 void checkInputs()
 {
-  while (muxShield.digitalReadMS(3, 0)) {
+  while (!muxShield.digitalReadMS(9)) {
     //play button is off
   }
   Serial.println("Checked");
