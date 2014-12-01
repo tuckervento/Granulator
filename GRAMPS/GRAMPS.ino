@@ -1,8 +1,11 @@
 #include <SdFat.h>
 #include <SPI.h>
 #include <Audio.h>
+#include <MuxShield.h>
 
+//initialize SD and MuxShield libraries
 SdFat SD;
+MuxShield muxShield;
 
 void setup()
 {
@@ -20,10 +23,22 @@ void setup()
   SPI.setClockDivider(4);
 
   Audio.begin(44100, 300);
+
+  //configure mux rows
+  muxShield.setMode(2, ANALOG_IN);
+  muxShield.setMode(3, DIGITAL_IN);
+}
+
+void checkInputs()
+{
+  while (!digitalReadMS(3, 0)) {
+    //play button is off
+  }
 }
 
 void loop()
 {
+  checkInputs();
   // open wave file from sdcard
   File wavFile = SD.open("test.wav");
   if (!wavFile) {
@@ -63,6 +78,7 @@ void loop()
     decayCounter = decaySamples;
     segmentCounter = 1;
     
+    checkInputs();
     while (samplesRemaining > 0) {
       //read into buffer
       wavFile.read(buf, samplesToRead*2);
