@@ -29,6 +29,8 @@ void setup()
   // hi-speed SPI transfers
   SPI.setClockDivider(4);
 
+  initInput();
+
   Audio.begin(44100, 300);
 }
 
@@ -43,6 +45,7 @@ void checkInput()
 void loop()
 {
   // open wave file from sdcard
+  checkInput();
   File wavFile = SD.open("test.wav");
   if (!wavFile) {
     // if the file didn't open, print an error and stop
@@ -81,6 +84,7 @@ void loop()
     decayCounter = decaySamples;
     segmentCounter = 1;
     
+    checkInput();
     while (samplesRemaining > 0) {
       //read into buffer
       wavFile.read(buf, samplesToRead*2);
