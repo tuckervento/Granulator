@@ -2,6 +2,18 @@
 #include <SPI.h>
 #include <Audio.h>
 
+// the flags
+#define SEEKING    0x01  // 0000 0001
+
+// macros to manipulate the flags
+#define RESET_FLAGS(x)     (x = 0x00)
+
+#define SEEK_ON(x)    (x |= SEEKING)
+#define SEEK_OFF(x)    (x &= ~SEEKING)
+
+// these evaluate to non-zero if the flag is set
+#define IS_SEEKING(x)      (x & SEEKING)
+
 SdFat SD;
 
 void setup()
@@ -53,6 +65,11 @@ void loop()
   unsigned long grainPosition = wavFile.position();
   uint8_t segmentCounter = 1;
 
+  uint8_t statusBits = 0x00;
+
+  //force seek
+  SEEK_ON(statusBits);
+
   Serial.println("Playing");
   // until the file is not finished
   while (wavFile.available()) {
@@ -102,6 +119,9 @@ void loop()
     else {
       grainWriteCounter = 0;
       grainPosition = wavFile.position();
+      if (IS_SEEKING(statusBits)) {
+        wavFile.seek(grainPosition + (grainRepeat - 1)*S*2);
+      }
     }
   }
   wavFile.close();
