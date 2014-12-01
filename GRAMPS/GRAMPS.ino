@@ -4,6 +4,16 @@
 
 SdFat SD;
 
+//pins
+uint8_t buttonPlay = 53;
+
+uint8_t potVolume = A0;
+
+void initInput()
+{
+  pinMode(buttonPlay, INPUT);
+}
+
 void setup()
 {
   // debug output at 9600 baud
@@ -20,6 +30,14 @@ void setup()
   SPI.setClockDivider(4);
 
   Audio.begin(44100, 300);
+}
+
+void checkInput()
+{
+  while(!digitalRead(buttonPlay)) {
+    //"off"
+  }
+  Serial.println("input checked");
 }
 
 void loop()
