@@ -4,6 +4,7 @@
 
 // the flags
 #define SEEKING    0x01  // 0000 0001
+#define REVERSE    0x02  // 0000 0010
 
 // macros to manipulate the flags
 #define RESET_FLAGS(x)     (x = 0x00)
@@ -11,8 +12,12 @@
 #define SEEK_ON(x)    (x |= SEEKING)
 #define SEEK_OFF(x)    (x &= ~SEEKING)
 
+#define REVERSE_ON(x)    (x |= REVERSE)
+#define REVERSE_OFF(x)    (x &= ~REVERSE)
+
 // these evaluate to non-zero if the flag is set
 #define IS_SEEKING(x)      (x & SEEKING)
+#define IS_REVERSE(x)      (x & REVERSE)
 
 SdFat SD;
 
@@ -34,10 +39,21 @@ void setup()
   Audio.begin(44100, 300);
 }
 
+void reverseBuffer(int16_t* p_buf, uint16_t p_size) {
+    uint16_t i = 0;
+    uint16_t j = p_size-1;
+    int16_t d;
+    while (i < j) {
+        d = p_buf[i];
+        p_buf[i++] = p_buf[j];
+        p_buf[j--] = d;
+    }
+}
+
 void loop()
 {
   // open wave file from sdcard
-  File wavFile = SD.open("test.wav");
+  File wavFile = SD.open("testtail.wav");
   if (!wavFile) {
     // if the file didn't open, print an error and stop
     Serial.println("error opening test.wav");
@@ -68,7 +84,8 @@ void loop()
   uint8_t statusBits = 0x00;
 
   //force seek
-  SEEK_ON(statusBits);
+  SEEK_OFF(statusBits);
+  REVERSE_ON(statusBits);
 
   Serial.println("Playing");
   // until the file is not finished
@@ -81,8 +98,18 @@ void loop()
     segmentCounter = 1;
     
     while (samplesRemaining > 0) {
+      //detect if we should reverse
+      //if the reverse bit is set we need to seek appropriately
+      //but we only need to do that when we're not reading the start of the grain
+      //(which would be indicated by being the "leftover" != B)
+      if (IS_REVERSE(statusBits) && samplesToRead != B) {
+        wavFile.seek(grainPosition + (S - segmentCounter * B) * 2)
+      }
       //read into buffer
       wavFile.read(buf, samplesToRead*2);
+      if (IS_REVERSE(statusBits)) {
+        reverseBuffer(buf, samplesToRead);
+      }
       
       if (attackCounter < attackSamples) {
         for (relativeEnvelopeCounter = 0; relativeEnvelopeCounter < samplesToRead && attackCounter < attackSamples; relativeEnvelopeCounter++) {
