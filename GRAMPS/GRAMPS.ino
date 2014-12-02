@@ -12,6 +12,7 @@ uint8_t potVolume = A0;
 void initInput()
 {
   pinMode(buttonPlay, INPUT);
+  attachInterrupt(buttonPlay, checkButtonPlay, CHANGE);
 }
 
 void setup()
@@ -34,18 +35,16 @@ void setup()
   Audio.begin(44100, 300);
 }
 
-void checkInput()
+void checkButtonPlay()
 {
   while(!digitalRead(buttonPlay)) {
-    //"off"
   }
-  Serial.println("input checked");
+  Serial.println("play button checked");
 }
 
 void loop()
 {
   // open wave file from sdcard
-  checkInput();
   File wavFile = SD.open("test.wav");
   if (!wavFile) {
     // if the file didn't open, print an error and stop
@@ -84,7 +83,6 @@ void loop()
     decayCounter = decaySamples;
     segmentCounter = 1;
     
-    checkInput();
     while (samplesRemaining > 0) {
       //read into buffer
       wavFile.read(buf, samplesToRead*2);
