@@ -65,14 +65,14 @@ void loop()
   //not sure of unsigned short vs uint16_t, etc...
   //i believe unsigned short is faster, but uint16_t is more memory conservative?
   //but i'm not sure
-  uint16_t grainTime = 100;
-  uint8_t grainRepeat = 2, grainWriteCounter = 0;
+  uint16_t grainTime = 500;
+  uint8_t grainRepeat = 1, grainWriteCounter = 0;
   const uint16_t S = 441*(grainTime/10); // Number of samples to read in block
   const uint16_t B = 1024; //fix at 1024 for now
   int16_t buf[B];
   uint16_t volume = 1023;
 
-  uint8_t attackSetting = 0, decaySetting = 90;
+  uint8_t attackSetting = 1, decaySetting = 1;
 
   uint16_t attackSamples = S * (attackSetting / 100.0), decaySamples = S * (decaySetting / 100.0);
   uint16_t relativeEnvelopeCounter, attackCounter = 0, decayCounter = 0, decayDifference;
@@ -83,9 +83,8 @@ void loop()
 
   uint8_t statusBits = 0x00;
 
-  //force seek
   SEEK_OFF(statusBits);
-  REVERSE_ON(statusBits);
+  REVERSE_OFF(statusBits);
 
   Serial.println("Playing");
   // until the file is not finished
@@ -102,8 +101,8 @@ void loop()
       //if the reverse bit is set we need to seek appropriately
       //but we only need to do that when we're not reading the start of the grain
       //(which would be indicated by being the "leftover" != B)
-      if (IS_REVERSE(statusBits) && samplesToRead != B) {
-        wavFile.seek(grainPosition + (S - segmentCounter * B) * 2);
+      if (IS_REVERSE(statusBits) && samplesToRead == B) {
+        wavFile.seek(grainPosition + ((S - (segmentCounter * B)) * 2));
       }
       //read into buffer
       wavFile.read(buf, samplesToRead*2);
@@ -145,10 +144,10 @@ void loop()
     }
     else {
       grainWriteCounter = 0;
-      grainPosition = wavFile.position();
       if (IS_SEEKING(statusBits)) {
-        wavFile.seek(grainPosition + (grainRepeat - 1)*S*2);
+        wavFile.seek(grainPosition + (grainRepeat*S*2));
       }
+      grainPosition = wavFile.position();
     }
   }
   wavFile.close();
