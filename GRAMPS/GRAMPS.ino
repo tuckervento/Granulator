@@ -2,34 +2,77 @@
 #include <SPI.h>
 #include <Audio.h>
 
-// the flags
-#define SEEKING    0x01  // 0000 0001
-#define REVERSE    0x02  // 0000 0010
+//the flags
+//STATUS
+#define PLAYING    0x01
+#define SEEKING    0x02
+#define REVERSE    0x04
 
-// macros to manipulate the flags
+//PARAMCHANGE
+#define GRAINTIME     0x01
+#define GRAINREPEAT   0x02
+#define ATTACKSETTING 0x04
+#define DECAYSETTING  0x08
+
+//macros to manipulate the flags
 #define RESET_FLAGS(x)     (x = 0x00)
 
-#define SEEK_ON(x)    (x |= SEEKING)
+//STATUS
+#define PLAYING_ON(x)  (x |= PLAYING)
+#define PLAYING_OFF(x) (x &= ~PLAYING)
+#define SEEK_ON(x)     (x |= SEEKING)
 #define SEEK_OFF(x)    (x &= ~SEEKING)
+#define REVERSE_ON(x)  (x |= REVERSE)
+#define REVERSE_OFF(x) (x &= ~REVERSE)
 
-#define REVERSE_ON(x)    (x |= REVERSE)
-#define REVERSE_OFF(x)    (x &= ~REVERSE)
+//PARAMCHANGE
+#define GRAINTIME_CHANGED(x)     (x |= GRAINTIME)
+#define GRAINTIME_HANDLED(x)     (x &= ~GRAINTIME)
+#define GRAINREPEAT_CHANGED(x)   (x |= GRAINREPEAT)
+#define GRAINREPEAT_HANDLED(x)   (x &= ~GRAINREPEAT)
+#define ATTACKSETTING_CHANGED(x) (x |= ATTACKSETTING)
+#define ATTACKSETTING_HANDLED(x) (x &= ~ATTACKSETTING)
+#define DECAYSETTING_CHANGED(x)  (x |= DECAYSETTING)
+#define DECAYSETTING_HANDLED(x)  (x &= ~DECAYSETTING)
 
-// these evaluate to non-zero if the flag is set
+
+//flag-checkers
+//STATUS
+#define IS_PLAYING(x)      (x & PLAYING)
 #define IS_SEEKING(x)      (x & SEEKING)
 #define IS_REVERSE(x)      (x & REVERSE)
 
+//PARAMCHANGE
+#define IS_GRAINTIME(x)      (x & GRAINTIME)
+#define IS_GRAINREPEAT(x)    (x & GRAINREPEAT)
+#define IS_ATTACKSETTING(x)  (x & ATTACKSETTING)
+#define IS_DECAYSETTING(x)   (x & DECAYSETTING)
+
+
 SdFat SD;
 
-//pins
-uint8_t buttonPlay = 53;
+uint8_t _statusBits = 0x00;
+uint8_t _paramChangeBits = 0x00;
 
-uint8_t potVolume = A0;
+//pins
+uint8_t _buttonPlay = 53;
+uint8_t _potVolume = A0;
+
+//parameters
+const uint16_t B = 1024; //fixed buffer size for segmentation
+
+uint16_t _volume = 1023;
+
+uint16_t _grainTime = 500;
+uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1;
+unsigned long _grainPosition;
+
+File _wavFile;
 
 void initInput()
 {
-  pinMode(buttonPlay, INPUT);
-  attachInterrupt(buttonPlay, checkButtonPlay, CHANGE);
+  pinMode(_buttonPlay, INPUT);
+  attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
 }
 
 void setup()
@@ -54,9 +97,13 @@ void setup()
 
 void checkButtonPlay()
 {
-  while(!digitalRead(buttonPlay)) {
+  digitalRead(_buttonPlay) ? PLAYING_ON(_statusBits) : PLAYING_OFF(_statusBits);
+  if (IS_PLAYING(_statusBits)) {
+    Serial.println("play button checked");
   }
-  Serial.println("play button checked");
+  else {
+    Serial.println("play off");
+  }
 }
 
 void reverseBuffer(int16_t* p_buf, uint16_t p_size)
@@ -71,45 +118,47 @@ void reverseBuffer(int16_t* p_buf, uint16_t p_size)
     }
 }
 
-void loop()
+void granulate()
 {
-  // open wave file from sdcard
-  File wavFile = SD.open("testtail.wav");
-  if (!wavFile) {
-    // if the file didn't open, print an error and stop
-    Serial.println("error opening test.wav");
-    while (true);
-  }
-  
   //Force grain time to 100ms right now
   //So samples/grain = 4410
   //not sure of unsigned short vs uint16_t, etc...
   //i believe unsigned short is faster, but uint16_t is more memory conservative?
   //but i'm not sure
-  uint16_t grainTime = 500;
-  uint8_t grainRepeat = 1, grainWriteCounter = 0;
-  const uint16_t S = 441*(grainTime/10); // Number of samples to read in block
-  const uint16_t B = 1024; //fix at 1024 for now
+  uint8_t grainWriteCounter = 0;
+  uint16_t S = 441*(_grainTime/10); // Number of samples to read in block
   int16_t buf[B];
-  uint16_t volume = 1023;
 
-  uint8_t attackSetting = 1, decaySetting = 1;
-
-  uint16_t attackSamples = S * (attackSetting / 100.0), decaySamples = S * (decaySetting / 100.0);
+  uint16_t attackSamples = S * (_attackSetting / 100.0), decaySamples = S * (_decaySetting / 100.0);
   uint16_t relativeEnvelopeCounter, attackCounter = 0, decayCounter = 0, decayDifference;
   
   uint16_t samplesRemaining = S, samplesToRead = B;
-  unsigned long grainPosition = wavFile.position();
+  _grainPosition = _wavFile.position();
   uint8_t segmentCounter = 1;
-
-  uint8_t statusBits = 0x00;
-
-  SEEK_OFF(statusBits);
-  REVERSE_OFF(statusBits);
 
   Serial.println("Playing");
   // until the file is not finished
-  while (wavFile.available()) {
+  while (_wavFile.available()) { //start of grain
+    if (_paramChangeBits != 0x00) { //if we have a change, re-calculate necessary parameters
+      if (GRAINTIME_CHANGED(_paramChangeBits)) {
+        S = 441*(_grainTime/10);
+        attackSamples = S * (_attackSetting / 100.0);
+        decaySamples = S * (_decaySetting / 100.0);
+        GRAINTIME_HANDLED(_paramChangeBits);
+      }
+      if (GRAINREPEAT_CHANGED(_paramChangeBits)) {
+        //nothing to do?
+        GRAINREPEAT_HANDLED(_paramChangeBits);
+      }
+      if (ATTACKSETTING_CHANGED(_paramChangeBits)) {
+        attackSamples = S * (_attackSetting / 100.0);
+        ATTACKSETTING_HANDLED(_paramChangeBits);
+      }
+      if (DECAYSETTING_CHANGED(_paramChangeBits)) {
+        decaySamples = S * (_decaySetting / 100.0);
+        DECAYSETTING_HANDLED(_paramChangeBits);
+      }
+    }
     //reset counters
     samplesToRead = B;
     samplesRemaining = S;
@@ -117,17 +166,20 @@ void loop()
     decayCounter = decaySamples;
     segmentCounter = 1;
     
-    while (samplesRemaining > 0) {
+    while (samplesRemaining > 0) { //start of segment
+      if (!IS_PLAYING(_statusBits)) {
+        return;
+      }
       //detect if we should reverse
       //if the reverse bit is set we need to seek appropriately
       //but we only need to do that when we're not reading the start of the grain
       //(which would be indicated by being the "leftover" != B)
-      if (IS_REVERSE(statusBits) && samplesToRead == B) {
-        wavFile.seek(grainPosition + ((S - (segmentCounter * B)) * 2));
+      if (IS_REVERSE(_statusBits) && samplesToRead == B) {
+        _wavFile.seek(_grainPosition + ((S - (segmentCounter * B)) * 2));
       }
       //read into buffer
-      wavFile.read(buf, samplesToRead*2);
-      if (IS_REVERSE(statusBits)) {
+      _wavFile.read(buf, samplesToRead*2);
+      if (IS_REVERSE(_statusBits)) {
         reverseBuffer(buf, samplesToRead);
       }
       
@@ -149,7 +201,7 @@ void loop()
         }
       }
   
-      Audio.prepare(buf, samplesToRead, volume);
+      Audio.prepare(buf, samplesToRead, _volume);
       Audio.write(buf, samplesToRead);
       
       segmentCounter++;
@@ -160,16 +212,34 @@ void loop()
 
     grainWriteCounter++;
     //seek back if we need to re-do this grain
-    if (grainWriteCounter < grainRepeat) {
-      wavFile.seek(grainPosition);
+    if (grainWriteCounter < _grainRepeat) {
+      _wavFile.seek(_grainPosition);
     }
     else {
       grainWriteCounter = 0;
-      if (IS_SEEKING(statusBits)) {
-        wavFile.seek(grainPosition + (grainRepeat*S*2));
+      if (IS_SEEKING(_statusBits)) {
+        _wavFile.seek(_grainPosition + (_grainRepeat*S*2));
       }
-      grainPosition = wavFile.position();
+      _grainPosition = _wavFile.position();
     }
   }
-  wavFile.close();
+}
+
+void loop()
+{
+  // open wave file from sdcard
+  _wavFile = SD.open("testtail.wav");
+  if (!_wavFile) {
+    // if the file didn't open, print an error and stop
+    Serial.println("error opening test.wav");
+    while (true);
+  }
+
+  while(true) {
+    _wavFile.seek(0);
+    granulate();
+    while(PLAYING_OFF(_statusBits));
+  }
+  
+  _wavFile.close();
 }
