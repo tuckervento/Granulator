@@ -103,7 +103,7 @@ void loop()
       //but we only need to do that when we're not reading the start of the grain
       //(which would be indicated by being the "leftover" != B)
       if (IS_REVERSE(statusBits) && samplesToRead != B) {
-        wavFile.seek(grainPosition + (S - segmentCounter * B) * 2)
+        wavFile.seek(grainPosition + (S - segmentCounter * B) * 2);
       }
       //read into buffer
       wavFile.read(buf, samplesToRead*2);
