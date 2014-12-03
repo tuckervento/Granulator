@@ -4,50 +4,61 @@
 
 //the flags
 //STATUS
-#define PLAYING    0x01
-#define SEEKING    0x02
-#define REVERSE    0x04
+#define PLAYING 0x01
+#define SEEKING 0x02
+#define REVERSE 0x04
+#define PAUSED  0x08
 
 //PARAMCHANGE
 #define GRAINTIME     0x01
 #define GRAINREPEAT   0x02
 #define ATTACKSETTING 0x04
 #define DECAYSETTING  0x08
+#define PAUSELENGTH   0x10
+#define PAUSEPOINT    0x20
 
 //macros to manipulate the flags
-#define RESET_FLAGS(x)     (x = 0x00)
+#define RESET_FLAGS(x)  (x = 0x00)
 
 //STATUS
-#define PLAYING_ON(x)  (x |= PLAYING)
-#define PLAYING_OFF(x) (x &= ~PLAYING)
-#define SEEK_ON(x)     (x |= SEEKING)
-#define SEEK_OFF(x)    (x &= ~SEEKING)
-#define REVERSE_ON(x)  (x |= REVERSE)
-#define REVERSE_OFF(x) (x &= ~REVERSE)
+#define PLAYING_ON(x)   (x |= PLAYING)
+#define PLAYING_OFF(x)  (x &= ~PLAYING)
+#define SEEK_ON(x)      (x |= SEEKING)
+#define SEEK_OFF(x)     (x &= ~SEEKING)
+#define REVERSE_ON(x)   (x |= REVERSE)
+#define REVERSE_OFF(x)  (x &= ~REVERSE)
+#define PAUSED_ON(x)    (x |= PAUSED)
+#define PAUSED_OFF(x)   (x &= ~PAUSED)
+
 
 //PARAMCHANGE
-#define GRAINTIME_CHANGED(x)     (x |= GRAINTIME)
-#define GRAINTIME_HANDLED(x)     (x &= ~GRAINTIME)
-#define GRAINREPEAT_CHANGED(x)   (x |= GRAINREPEAT)
-#define GRAINREPEAT_HANDLED(x)   (x &= ~GRAINREPEAT)
-#define ATTACKSETTING_CHANGED(x) (x |= ATTACKSETTING)
-#define ATTACKSETTING_HANDLED(x) (x &= ~ATTACKSETTING)
-#define DECAYSETTING_CHANGED(x)  (x |= DECAYSETTING)
-#define DECAYSETTING_HANDLED(x)  (x &= ~DECAYSETTING)
-
+#define GRAINTIME_CHANGE(x)     (x |= GRAINTIME)
+#define GRAINTIME_HANDLE(x)     (x &= ~GRAINTIME)
+#define GRAINREPEAT_CHANGE(x)   (x |= GRAINREPEAT)
+#define GRAINREPEAT_HANDLE(x)   (x &= ~GRAINREPEAT)
+#define ATTACKSETTING_CHANGE(x) (x |= ATTACKSETTING)
+#define ATTACKSETTING_HANDLE(x) (x &= ~ATTACKSETTING)
+#define DECAYSETTING_CHANGE(x)  (x |= DECAYSETTING)
+#define DECAYSETTING_HANDLE(x)  (x &= ~DECAYSETTING)
+#define PAUSELENGTH_CHANGE(x)   (x |= PAUSELENGTH)
+#define PAUSELENGTH_HANDLE(x)   (x &= ~PAUSELENGTH)
+#define PAUSEPOINT_CHANGE(x)    (x |= PAUSEPOINT)
+#define PAUSEPOINT_HANDLE(x)    (x &= ~PAUSEPOINT)
 
 //flag-checkers
 //STATUS
-#define IS_PLAYING(x)      (x & PLAYING)
-#define IS_SEEKING(x)      (x & SEEKING)
-#define IS_REVERSE(x)      (x & REVERSE)
+#define IS_PLAYING(x) (x & PLAYING)
+#define IS_SEEKING(x) (x & SEEKING)
+#define IS_REVERSE(x) (x & REVERSE)
+#define IS_PAUSED(x)  (x & PAUSED)
 
 //PARAMCHANGE
-#define IS_GRAINTIME(x)      (x & GRAINTIME)
-#define IS_GRAINREPEAT(x)    (x & GRAINREPEAT)
-#define IS_ATTACKSETTING(x)  (x & ATTACKSETTING)
-#define IS_DECAYSETTING(x)   (x & DECAYSETTING)
-
+#define DID_GRAINTIME(x)      (x & GRAINTIME)
+#define DID_GRAINREPEAT(x)    (x & GRAINREPEAT)
+#define DID_ATTACKSETTING(x)  (x & ATTACKSETTING)
+#define DID_DECAYSETTING(x)   (x & DECAYSETTING)
+#define DID_PAUSELENGTH(x)    (x & PAUSELENGTH)
+#define DID_PAUSEPOINT(x)     (x & PAUSEPOINT)
 
 SdFat SD;
 
@@ -55,8 +66,8 @@ uint8_t _statusBits = 0x00;
 uint8_t _paramChangeBits = 0x00;
 
 //pins
-uint8_t _buttonPlay = 53;
-uint8_t _potVolume = A0;
+uint8_t _buttonPlay = 53, _buttonSeek, _buttonReverse, _buttonPause;
+uint8_t _potVolume = A0, _potGrainTime, _potGrainRepeat, _potAttackSetting, _potDecaySetting, _potPauseLength, _potPausePoint;
 
 //parameters
 const uint16_t B = 1024; //fixed buffer size for segmentation
@@ -64,15 +75,21 @@ const uint16_t B = 1024; //fixed buffer size for segmentation
 uint16_t _volume = 1023;
 
 uint16_t _grainTime = 500;
-uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1;
-unsigned long _grainPosition;
+uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1, _pauseLoopLength = 2;
+unsigned long _grainPosition, _pauseLoopPoint;
 
 File _wavFile;
 
 void initInput()
 {
   pinMode(_buttonPlay, INPUT);
+  //pinMode(_buttonSeek, INPUT);
+  //pinMode(_buttonReverse, INPUT);
+  //pinMode(_buttonPause, INPUT);
   attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
+  //attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
+  //attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
+  //attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
 }
 
 void setup()
@@ -81,29 +98,18 @@ void setup()
   Serial.begin(9600);
 
   // setup SD-card
-  Serial.print("Initializing SD card...");
+  Serial.print("SD");
   if (!SD.begin(8, 4)) {
-    Serial.println(" failed!");
+    Serial.println(" NO");
     return;
   }
-  Serial.println(" done.");
+  Serial.println(" OK");
   // hi-speed SPI transfers
   SPI.setClockDivider(4);
 
   initInput();
 
   Audio.begin(44100, 300);
-}
-
-void checkButtonPlay()
-{
-  digitalRead(_buttonPlay) ? PLAYING_ON(_statusBits) : PLAYING_OFF(_statusBits);
-  if (IS_PLAYING(_statusBits)) {
-    Serial.println("play button checked");
-  }
-  else {
-    Serial.println("play off");
-  }
 }
 
 void reverseBuffer(int16_t* p_buf, uint16_t p_size)
@@ -135,28 +141,38 @@ void granulate()
   uint16_t samplesRemaining = S, samplesToRead = B;
   _grainPosition = _wavFile.position();
   uint8_t segmentCounter = 1;
+  uint8_t pauseLoopCounter = 0, pointChangeHandled = 0;
 
-  Serial.println("Playing");
-  // until the file is not finished
+  Serial.println("P");
   while (_wavFile.available()) { //start of grain
     if (_paramChangeBits != 0x00) { //if we have a change, re-calculate necessary parameters
-      if (GRAINTIME_CHANGED(_paramChangeBits)) {
+      if (DID_GRAINTIME(_paramChangeBits)) {
         S = 441*(_grainTime/10);
         attackSamples = S * (_attackSetting / 100.0);
         decaySamples = S * (_decaySetting / 100.0);
-        GRAINTIME_HANDLED(_paramChangeBits);
+        GRAINTIME_HANDLE(_paramChangeBits);
       }
-      if (GRAINREPEAT_CHANGED(_paramChangeBits)) {
+      if (DID_GRAINREPEAT(_paramChangeBits)) {
         //nothing to do?
-        GRAINREPEAT_HANDLED(_paramChangeBits);
+        GRAINREPEAT_HANDLE(_paramChangeBits);
       }
-      if (ATTACKSETTING_CHANGED(_paramChangeBits)) {
+      if (DID_ATTACKSETTING(_paramChangeBits)) {
         attackSamples = S * (_attackSetting / 100.0);
-        ATTACKSETTING_HANDLED(_paramChangeBits);
+        ATTACKSETTING_HANDLE(_paramChangeBits);
       }
-      if (DECAYSETTING_CHANGED(_paramChangeBits)) {
+      if (DID_DECAYSETTING(_paramChangeBits)) {
         decaySamples = S * (_decaySetting / 100.0);
-        DECAYSETTING_HANDLED(_paramChangeBits);
+        DECAYSETTING_HANDLE(_paramChangeBits);
+      }
+      if (DID_PAUSEPOINT(_paramChangeBits) && !pointChangeHandled) {
+        _pauseLoopPoint = _grainPosition;
+        pauseLoopCounter = 0;
+        pointChangeHandled = 1; //debounce
+        PAUSEPOINT_HANDLE(_paramChangeBits);
+      }
+      if (DID_PAUSELENGTH(_paramChangeBits)) {
+        //nothing to do?
+        PAUSELENGTH_HANDLE(_paramChangeBits);
       }
     }
     //reset counters
@@ -220,6 +236,11 @@ void granulate()
       if (IS_SEEKING(_statusBits)) {
         _wavFile.seek(_grainPosition + (_grainRepeat*S*2));
       }
+      if (IS_PAUSED(_statusBits) && ++pauseLoopCounter >= _pauseLoopLength) {
+        pointChangeHandled = 0; //if we made it to a loop reset the switch is probably done bouncing
+        _wavFile.seek(_pauseLoopPoint);
+        pauseLoopCounter = 0;
+      }
       _grainPosition = _wavFile.position();
     }
   }
@@ -227,19 +248,38 @@ void granulate()
 
 void loop()
 {
-  // open wave file from sdcard
   _wavFile = SD.open("testtail.wav");
   if (!_wavFile) {
-    // if the file didn't open, print an error and stop
-    Serial.println("error opening test.wav");
+    Serial.println("ER");
     while (true);
   }
 
   while(true) {
     _wavFile.seek(0);
     granulate();
-    while(PLAYING_OFF(_statusBits));
+    while(!IS_PLAYING(_statusBits));
   }
   
   _wavFile.close();
+}
+
+void checkButtonPlay()
+{
+  digitalRead(_buttonPlay) ? PLAYING_ON(_statusBits) : PLAYING_OFF(_statusBits);
+}
+
+void checkButtonSeek()
+{
+  digitalRead(_buttonSeek) ? SEEK_ON(_statusBits) : SEEK_OFF(_statusBits);
+}
+
+void checkButtonReverse()
+{
+  digitalRead(_buttonReverse) ? REVERSE_ON(_statusBits) : REVERSE_OFF(_statusBits);
+}
+
+void checkButtonPause()
+{
+  digitalRead(_buttonPause) ? PAUSED_ON(_statusBits) : PAUSED_OFF(_statusBits);
+  if (IS_PAUSED(_statusBits)) { PAUSEPOINT_CHANGE(_paramChangeBits); } //for now
 }
