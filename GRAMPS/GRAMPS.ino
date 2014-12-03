@@ -75,7 +75,7 @@ uint8_t _statusBits = 0x00;
 uint8_t _paramChangeBits = 0x00;
 
 //pins
-uint8_t _buttonPlay = 53, _buttonSeek = 51, _buttonReverse = 49, _buttonPause = 47, _buttonFilename3 = 52, _buttonFilename2 = 50, _buttonFilename1 = 48, _buttonFilename0 = 46, _buttonFilenameGo = 44;
+uint8_t _buttonPlay = 53, _buttonSeek = 51, _buttonReverse = 49, _buttonPause = 47, _buttonResetParams = 45, _buttonFilename3 = 52, _buttonFilename2 = 50, _buttonFilename1 = 48, _buttonFilename0 = 46, _buttonFilenameGo = 44;
 uint8_t _potVolume = A0, _potGrainTime = A1, _potGrainRepeat = A2, _potAttackSetting = A3, _potDecaySetting = A4, _potPauseLength = A5, _potPausePoint = A6, _potTimestretch = A7;//extra:A8
 uint16_t _potVolumePrevVal = 0, _potGrainTimePrevVal = 0, _potGrainRepeatPrevVal = 0, _potAttackSettingPrevVal = 0, _potDecaySettingPrevVal = 0, _potPauseLengthPrevVal = 0, _potPausePointPrevVal = 0, _potTimestretchPrevVal = 0;
 //parameters
@@ -115,6 +115,7 @@ void initInput()
   pinMode(_buttonSeek, INPUT);
   pinMode(_buttonReverse, INPUT);
   pinMode(_buttonPause, INPUT);
+  pinMode(_buttonResetParams, INPUT);
   pinMode(_buttonFilename0, INPUT);
   pinMode(_buttonFilename1, INPUT);
   pinMode(_buttonFilename2, INPUT);
@@ -124,6 +125,7 @@ void initInput()
   attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
   attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
   attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
+  attachInterrupt(_buttonResetParams, resetParams, RISING);
   attachInterrupt(_buttonFilenameGo, checkButtonFilename, RISING);
   //analogReadResolution(12); seems like we don't want this much accuracy if our circuits are so noisy
   checkParams();
@@ -477,6 +479,12 @@ void checkButtonFilename()
   FILENAME_SIGNAL(_paramChangeBits);
 }
 
+void resetParams()
+{
+  _timestretchValue = 100;
+  _potTimestretchPrevVal = 1018;
+}
+
 void checkParams()
 {
   uint16_t val;
@@ -529,7 +537,11 @@ void checkParams()
   val = analogRead(_potPauseLength);
   diff = _potPauseLengthPrevVal - val;
   if (diff > 13 || diff < -13) {
-    //1-32
+    //1-10
+    _potPauseLengthPrevVal = val;
+    val /= 100;
+    _pauseLoopLength = (val > 0) ? val : 1;
+    PAUSELENGTH_SIGNAL(_paramChangeBits);
   }
 
   val = analogRead(_potPausePoint);
