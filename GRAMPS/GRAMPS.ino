@@ -35,21 +35,21 @@
 
 
 //PARAMCHANGE
-#define GRAINTIME_CHANGE(x)     (x |= GRAINTIME)
+#define GRAINTIME_SIGNAL(x)     (x |= GRAINTIME)
 #define GRAINTIME_HANDLE(x)     (x &= ~GRAINTIME)
-#define GRAINREPEAT_CHANGE(x)   (x |= GRAINREPEAT)
+#define GRAINREPEAT_SIGNAL(x)   (x |= GRAINREPEAT)
 #define GRAINREPEAT_HANDLE(x)   (x &= ~GRAINREPEAT)
-#define ATTACKSETTING_CHANGE(x) (x |= ATTACKSETTING)
+#define ATTACKSETTING_SIGNAL(x) (x |= ATTACKSETTING)
 #define ATTACKSETTING_HANDLE(x) (x &= ~ATTACKSETTING)
-#define DECAYSETTING_CHANGE(x)  (x |= DECAYSETTING)
+#define DECAYSETTING_SIGNAL(x)  (x |= DECAYSETTING)
 #define DECAYSETTING_HANDLE(x)  (x &= ~DECAYSETTING)
-#define PAUSELENGTH_CHANGE(x)   (x |= PAUSELENGTH)
+#define PAUSELENGTH_SIGNAL(x)   (x |= PAUSELENGTH)
 #define PAUSELENGTH_HANDLE(x)   (x &= ~PAUSELENGTH)
-#define PAUSEPOINT_CHANGE(x)    (x |= PAUSEPOINT)
+#define PAUSEPOINT_SIGNAL(x)    (x |= PAUSEPOINT)
 #define PAUSEPOINT_HANDLE(x)    (x &= ~PAUSEPOINT)
-#define TIMESTRETCH_CHANGE(x)   (x |= TIMESTRETCH)
+#define TIMESTRETCH_SIGNAL(x)   (x |= TIMESTRETCH)
 #define TIMESTRETCH_HANDLE(x)   (x &= ~TIMESTRETCH)
-#define FILENAME_CHANGE(x)      (x |= FILENAME)
+#define FILENAME_SIGNAL(x)      (x |= FILENAME)
 #define FILENAME_HANDLE(x)      (x &= ~FILENAME)
 
 //flag-checkers
@@ -75,7 +75,7 @@ uint8_t _statusBits = 0x00;
 uint8_t _paramChangeBits = 0x00;
 
 //pins
-uint8_t _buttonPlay = 53, _buttonSeek = 51, _buttonReverse = 49, _buttonPause = 47, _buttonFilename0 = 52, _buttonFilename1 = 50, _buttonFilename2 = 48, _buttonFilename3 = 46, _buttonFilenameGo = 44;
+uint8_t _buttonPlay = 53, _buttonSeek = 51, _buttonReverse = 49, _buttonPause = 47, _buttonFilename3 = 52, _buttonFilename2 = 50, _buttonFilename1 = 48, _buttonFilename0 = 46, _buttonFilenameGo = 44;
 uint8_t _potVolume = A0, _potGrainTime = A1, _potGrainRepeat = A2, _potAttackSetting = A3, _potDecaySetting = A4, _potPauseLength = A5, _potPausePoint = A6, _potTimestretch = A7;//extra:A8
 uint16_t _potVolumePrevVal = 0, _potGrainTimePrevVal = 0, _potGrainRepeatPrevVal = 0, _potAttackSettingPrevVal = 0, _potDecaySettingPrevVal = 0, _potPauseLengthPrevVal = 0, _potPausePointPrevVal = 0, _potTimestretchPrevVal = 0;
 //parameters
@@ -465,7 +465,7 @@ void checkButtonReverse()
 void checkButtonPause()
 {
   digitalRead(_buttonPause) ? PAUSED_ON(_statusBits) : PAUSED_OFF(_statusBits);
-  if (IS_PAUSED(_statusBits)) { PAUSEPOINT_CHANGE(_paramChangeBits); } //for now
+  if (IS_PAUSED(_statusBits)) { PAUSEPOINT_SIGNAL(_paramChangeBits); } //for now
 }
 
 void checkButtonFilename()
@@ -474,7 +474,7 @@ void checkButtonFilename()
   digitalRead(_buttonFilename1) ? _nameSelect |= 0x02 : _nameSelect &= ~0x02;
   digitalRead(_buttonFilename2) ? _nameSelect |= 0x04 : _nameSelect &= ~0x04;
   digitalRead(_buttonFilename3) ? _nameSelect |= 0x08 : _nameSelect &= ~0x08;
-  FILENAME_CHANGE(_paramChangeBits);
+  FILENAME_SIGNAL(_paramChangeBits);
 }
 
 void checkParams()
@@ -486,12 +486,20 @@ void checkParams()
   diff = _potGrainTimePrevVal - val;
   if (diff > 13 || diff < -13) {
     //20ms - 2000ms?  In increments of 20ms
+    _potGrainTimePrevVal = val;
+    val /= 10;
+    _grainTime = (val > 0) ? val*20 : 20;
+    GRAINTIME_SIGNAL(_paramChangeBits);
+    Serial.println(_grainTime);
   }
 
   val = analogRead(_potGrainRepeat);
   diff = _potGrainRepeatPrevVal - val;
   if (diff > 13 || diff < -13) {
     //1-10
+    _potGrainRepeatPrevVal = val;
+    _grainRepeat = (val > 0) ? val/100 : 1;
+    GRAINREPEAT_SIGNAL(_paramChangeBits);
   }
 
   val = analogRead(_potAttackSetting);
@@ -525,6 +533,7 @@ void checkParams()
     val /= 10;
     _timestretchValue = (val > 100) ? 100 : val;
     if (!_timestretchValue) { _timestretchValue = 1; }
+    TIMESTRETCH_SIGNAL(_paramChangeBits);
     //1-100
   }
 
