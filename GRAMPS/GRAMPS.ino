@@ -60,7 +60,6 @@
 #define DID_PAUSELENGTH(x)    (x & PAUSELENGTH)
 #define DID_PAUSEPOINT(x)     (x & PAUSEPOINT)
 
-
 SdFat SD;
 
 uint8_t _statusBits = 0x00;
@@ -76,7 +75,7 @@ const uint16_t B = 1024; //fixed buffer size for segmentation
 uint16_t _volume = 1023;
 
 uint16_t _grainTime = 500;
-uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1, _pauseLoopLength = 4;
+uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1, _pauseLoopLength = 2;
 unsigned long _grainPosition, _pauseLoopPoint;
 
 File _wavFile;
@@ -84,13 +83,13 @@ File _wavFile;
 void initInput()
 {
   pinMode(_buttonPlay, INPUT);
-  pinMode(_buttonSeek, INPUT);
-  pinMode(_buttonReverse, INPUT);
-  pinMode(_buttonPause, INPUT);
+  //pinMode(_buttonSeek, INPUT);
+  //pinMode(_buttonReverse, INPUT);
+  //pinMode(_buttonPause, INPUT);
   attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
-  attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
-  attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
-  attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
+  //attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
+  //attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
+  //attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
 }
 
 void setup()
@@ -142,10 +141,9 @@ void granulate()
   uint16_t samplesRemaining = S, samplesToRead = B;
   _grainPosition = _wavFile.position();
   uint8_t segmentCounter = 1;
-  uint8_t pauseLoopCounter = 0;
+  uint8_t pauseLoopCounter = 0, pointChangeHandled = 0;
 
-  Serial.println("Playing");
-  // until the file is not finished
+  Serial.println("P");
   while (_wavFile.available()) { //start of grain
     if (_paramChangeBits != 0x00) { //if we have a change, re-calculate necessary parameters
       if (DID_GRAINTIME(_paramChangeBits)) {
@@ -165,6 +163,16 @@ void granulate()
       if (DID_DECAYSETTING(_paramChangeBits)) {
         decaySamples = S * (_decaySetting / 100.0);
         DECAYSETTING_HANDLE(_paramChangeBits);
+      }
+      if (DID_PAUSEPOINT(_paramChangeBits) && !pointChangeHandled) {
+        _pauseLoopPoint = _grainPosition;
+        pauseLoopCounter = 0;
+        pointChangeHandled = 1; //debounce
+        PAUSEPOINT_HANDLE(_paramChangeBits);
+      }
+      if (DID_PAUSELENGTH(_paramChangeBits)) {
+        //nothing to do?
+        PAUSELENGTH_HANDLE(_paramChangeBits);
       }
     }
     //reset counters
@@ -228,6 +236,11 @@ void granulate()
       if (IS_SEEKING(_statusBits)) {
         _wavFile.seek(_grainPosition + (_grainRepeat*S*2));
       }
+      if (IS_PAUSED(_statusBits) && ++pauseLoopCounter >= _pauseLoopLength) {
+        pointChangeHandled = 0; //if we made it to a loop reset the switch is probably done bouncing
+        _wavFile.seek(_pauseLoopPoint);
+        pauseLoopCounter = 0;
+      }
       _grainPosition = _wavFile.position();
     }
   }
@@ -235,10 +248,8 @@ void granulate()
 
 void loop()
 {
-  // open wave file from sdcard
   _wavFile = SD.open("testtail.wav");
   if (!_wavFile) {
-    // if the file didn't open, print an error and stop
     Serial.println("ER");
     while (true);
   }
@@ -246,7 +257,7 @@ void loop()
   while(true) {
     _wavFile.seek(0);
     granulate();
-    while(PLAYING_OFF(_statusBits));
+    while(!IS_PLAYING(_statusBits));
   }
   
   _wavFile.close();
@@ -269,5 +280,6 @@ void checkButtonReverse()
 
 void checkButtonPause()
 {
-  digitalRead(_buttonPlay) ? PAUSED_ON(_statusBits) : PAUSED_OFF(_statusBits);
+  digitalRead(_buttonPause) ? PAUSED_ON(_statusBits) : PAUSED_OFF(_statusBits);
+  if (IS_PAUSED(_statusBits)) { PAUSEPOINT_CHANGE(_paramChangeBits); } //for now
 }
