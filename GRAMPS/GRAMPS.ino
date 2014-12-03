@@ -71,13 +71,13 @@
 
 SdFat SD;
 
-uint8_t _statusBits = 0x01;
+uint8_t _statusBits = 0x00;
 uint8_t _paramChangeBits = 0x00;
 
 //pins
-uint8_t _buttonPlay = 53, _buttonSeek = 52, _buttonReverse = 51, _buttonPause = 50, _buttonFilename0 = 49, _buttonFilename1 = 48, _buttonFilename2 = 47, _buttonFilename3 = 46, _buttonFilenameGo = 45;
+uint8_t _buttonPlay = 53, _buttonSeek = 51, _buttonReverse = 49, _buttonPause = 47, _buttonFilename0 = 52, _buttonFilename1 = 50, _buttonFilename2 = 48, _buttonFilename3 = 46, _buttonFilenameGo = 44;
 uint8_t _potVolume = A0, _potGrainTime = A1, _potGrainRepeat = A2, _potAttackSetting = A3, _potDecaySetting = A4, _potPauseLength = A5, _potPausePoint = A6, _potTimestretch = A7;//extra:A8
-
+uint16_t _potVolumePrevVal = 0, _potGrainTimePrevVal = 0, _potGrainRepeatPrevVal = 0, _potAttackSettingPrevVal = 0, _potDecaySettingPrevVal = 0, _potPauseLengthPrevVal = 0, _potPausePointPrevVal = 0, _potTimestretchPrevVal = 0;
 //parameters
 const uint16_t B = 1024; //fixed buffer size for segmentation
 
@@ -125,7 +125,8 @@ void initInput()
   attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
   attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
   attachInterrupt(_buttonFilenameGo, checkButtonFilename, RISING);
-  analogReadResolution(12);
+  //analogReadResolution(12); seems like we don't want this much accuracy if our circuits are so noisy
+  checkParams();
 }
 
 void setup()
@@ -199,6 +200,7 @@ void granulate()
     segmentCounter = 1;
     
     while (samplesRemaining > 0) { //start of segment loop
+      checkParams();
       if (_paramChangeBits != 0x00) { //if we have a change, re-calculate necessary parameters
         if (DID_GRAINTIME(_paramChangeBits)) {
           deltaS = S - 441*(_grainTime/10);
@@ -375,8 +377,11 @@ void loop()
   }
 
   while(true) {
-    _wavFile.seek(0);
-    granulate();
+    Serial.println("here");
+    if (IS_PLAYING(_statusBits)) {
+      _wavFile.seek(0);
+      granulate();
+    }
     if (DID_FILENAME(_paramChangeBits)) {
       _wavFile.close();
       switch(_nameSelect) {
@@ -434,7 +439,7 @@ void loop()
       }
       FILENAME_HANDLE(_paramChangeBits);
     }
-    while(!IS_PLAYING(_statusBits));
+    //while(!IS_PLAYING(_statusBits)) {};
   }
   
   _wavFile.close();
@@ -443,6 +448,8 @@ void loop()
 void checkButtonPlay()
 {
   digitalRead(_buttonPlay) ? PLAYING_ON(_statusBits) : PLAYING_OFF(_statusBits);
+  if (IS_PLAYING(_statusBits)) { Serial.println("checked"); }
+  else { Serial.println("nope"); }
 }
 
 void checkButtonSeek()
@@ -468,4 +475,63 @@ void checkButtonFilename()
   digitalRead(_buttonFilename2) ? _nameSelect |= 0x04 : _nameSelect &= ~0x04;
   digitalRead(_buttonFilename3) ? _nameSelect |= 0x08 : _nameSelect &= ~0x08;
   FILENAME_CHANGE(_paramChangeBits);
+}
+
+void checkParams()
+{
+  uint16_t val;
+  int8_t diff;
+
+  val = analogRead(_potGrainTime);
+  diff = _potGrainTimePrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //20ms - 2000ms?  In increments of 20ms
+  }
+
+  val = analogRead(_potGrainRepeat);
+  diff = _potGrainRepeatPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //1-10
+  }
+
+  val = analogRead(_potAttackSetting);
+  diff = _potAttackSettingPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //1-100
+  }
+
+  val = analogRead(_potDecaySetting);
+  diff = _potDecaySettingPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //1-100
+  }
+
+  val = analogRead(_potPauseLength);
+  diff = _potPauseLengthPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //1-32
+  }
+
+  val = analogRead(_potPausePoint);
+  diff = _potPausePointPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //what do you plan to do here
+  }
+
+  val = analogRead(_potTimestretch);
+  diff = _potTimestretchPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    _potTimestretchPrevVal = val;
+    val /= 10;
+    _timestretchValue = (val > 100) ? 100 : val;
+    if (!_timestretchValue) { _timestretchValue = 1; }
+    //1-100
+  }
+
+  val = analogRead(_potVolume);
+  diff = _potVolumePrevVal - val;
+  if (diff > 13 || diff < -13) {
+    _volume = val;
+    _potVolumePrevVal = val;
+  }
 }
