@@ -80,7 +80,7 @@ const uint16_t B = 1024; //fixed buffer size for segmentation
 uint16_t _volume = 1023;
 
 uint16_t _grainTime = 500;
-uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1, _pauseLoopLength = 2, _timestretchValue = 50;
+uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1, _pauseLoopLength = 2, _timestretchValue = 100;
 unsigned long _grainPosition, _pauseLoopPoint;
 
 File _wavFile;
@@ -222,7 +222,7 @@ void granulate()
         tsNPerSample = 100.0/(float)_timestretchValue;
         samplesToRead = floor(((float)samplesToRead)/tsNPerSample);
         tsNPerSample -= 1.0;
-        if (tsNPerSample > 1.0) {
+        if (tsNPerSample >= 1.0) {
           tsPerSampleBase = floor(tsNPerSample);
           tsNPerSample -= (float)tsPerSampleBase;
         }
