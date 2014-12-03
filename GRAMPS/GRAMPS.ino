@@ -179,6 +179,7 @@ void granulate()
   uint16_t S = 441*(_grainTime/10); // Number of samples to read in block
   int16_t buf[B];
 
+  float envelopeSlope;
   uint16_t attackSamples = S * (_attackSetting / 100.0), decaySamples = S * (_decaySetting / 100.0);
   uint16_t relativeEnvelopeCounter, attackCounter = 0, decayCounter = 0, decayDifference;
   int16_t deltaS;
@@ -280,7 +281,8 @@ void granulate()
       
       if (attackCounter < attackSamples) {
         for (relativeEnvelopeCounter = 0; relativeEnvelopeCounter < samplesToRead && attackCounter < attackSamples; relativeEnvelopeCounter++) {
-          buf[relativeEnvelopeCounter] *= (attackCounter/(float)attackSamples);
+          envelopeSlope = (attackCounter/(float)attackSamples);
+          buf[relativeEnvelopeCounter] *= (envelopeSlope*envelopeSlope);//= ((float)buf[relativeEnvelopeCounter]) * ((float)attackCounter/(float)attackSamples);
           attackCounter++;
         }
       }
@@ -292,7 +294,8 @@ void granulate()
         for (relativeEnvelopeCounter = (decayDifference < B) ? (B - decayDifference - 1) : 0;
           relativeEnvelopeCounter < samplesToRead && decayCounter > 0; relativeEnvelopeCounter++) {
           decayCounter--;
-          buf[relativeEnvelopeCounter] *= (decayCounter/(float)decaySamples);
+          envelopeSlope = (decayCounter/(float)decaySamples);
+          buf[relativeEnvelopeCounter] *= (envelopeSlope*envelopeSlope);
         }
       }
       
