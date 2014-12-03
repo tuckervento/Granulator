@@ -498,7 +498,8 @@ void checkParams()
   if (diff > 13 || diff < -13) {
     //1-10
     _potGrainRepeatPrevVal = val;
-    _grainRepeat = (val > 0) ? val/100 : 1;
+    val /= 100;
+    _grainRepeat = (val > 0) ? val : 1;
     GRAINREPEAT_SIGNAL(_paramChangeBits);
   }
 
@@ -506,12 +507,23 @@ void checkParams()
   diff = _potAttackSettingPrevVal - val;
   if (diff > 13 || diff < -13) {
     //1-100
+    _potAttackSettingPrevVal = val;
+    val /= 10;
+    _attackSetting = (val <= 100) ? val : 100;
+    ATTACKSETTING_SIGNAL(_paramChangeBits);
   }
 
   val = analogRead(_potDecaySetting);
   diff = _potDecaySettingPrevVal - val;
   if (diff > 13 || diff < -13) {
     //1-100
+    _potDecaySettingPrevVal = val;
+    val /= 10;
+    _decaySetting = (val <= 100) ? val : 100;
+    if ((_attackSetting + _decaySetting) > 100) { //attack eats decay
+      _decaySetting = 100 - _attackSetting;
+    }
+    DECAYSETTING_SIGNAL(_paramChangeBits);
   }
 
   val = analogRead(_potPauseLength);
