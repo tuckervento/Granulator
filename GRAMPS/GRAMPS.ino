@@ -75,8 +75,8 @@ uint8_t _statusBits = 0x01;
 uint8_t _paramChangeBits = 0x00;
 
 //pins
-uint8_t _buttonPlay = 53, _buttonSeek, _buttonReverse, _buttonPause, _buttonFilename0, _buttonFilename1, _buttonFilename2, _buttonFilename3, _buttonFilenameGo;
-uint8_t _potVolume = A0, _potGrainTime, _potGrainRepeat, _potAttackSetting, _potDecaySetting, _potPauseLength, _potPausePoint, _potTimestretch;
+uint8_t _buttonPlay = 53, _buttonSeek = 52, _buttonReverse = 51, _buttonPause = 50, _buttonFilename0 = 49, _buttonFilename1 = 48, _buttonFilename2 = 47, _buttonFilename3 = 46, _buttonFilenameGo = 45;
+uint8_t _potVolume = A0, _potGrainTime = A1, _potGrainRepeat = A2, _potAttackSetting = A3, _potDecaySetting = A4, _potPauseLength = A5, _potPausePoint = A6, _potTimestretch = A7;//extra:A8
 
 //parameters
 const uint16_t B = 1024; //fixed buffer size for segmentation
@@ -111,20 +111,21 @@ File _wavFile;
 
 void initInput()
 {
-  //pinMode(_buttonPlay, INPUT);
-  //pinMode(_buttonSeek, INPUT);
-  //pinMode(_buttonReverse, INPUT);
-  //pinMode(_buttonPause, INPUT);
-  //pinMode(_buttonFilename0, INPUT);
-  //pinMode(_buttonFilename1, INPUT);
-  //pinMode(_buttonFilename2, INPUT);
-  //pinMode(_buttonFilename3, INPUT);
-  //pinMode(_buttonFilenameGo, INPUT);
-  //attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
-  //attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
-  //attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
-  //attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
-  //attachInterrupt(_buttonFilenameGo, checkButtonFilename, RISING);
+  pinMode(_buttonPlay, INPUT);
+  pinMode(_buttonSeek, INPUT);
+  pinMode(_buttonReverse, INPUT);
+  pinMode(_buttonPause, INPUT);
+  pinMode(_buttonFilename0, INPUT);
+  pinMode(_buttonFilename1, INPUT);
+  pinMode(_buttonFilename2, INPUT);
+  pinMode(_buttonFilename3, INPUT);
+  pinMode(_buttonFilenameGo, INPUT);
+  attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
+  attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
+  attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
+  attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
+  attachInterrupt(_buttonFilenameGo, checkButtonFilename, RISING);
+  analogReadResolution(12);
 }
 
 void setup()
@@ -170,11 +171,6 @@ void insertIntoBuffer(int16_t* p_buf, uint16_t p_size, int16_t p_value, uint16_t
 
 void granulate()
 {
-  //Force grain time to 100ms right now
-  //So samples/grain = 4410
-  //not sure of unsigned short vs uint16_t, etc...
-  //i believe unsigned short is faster, but uint16_t is more memory conservative?
-  //but i'm not sure
   uint8_t grainWriteCounter = 0;
   uint16_t S = 441*(_grainTime/10); // Number of samples to read in block
   int16_t buf[B];
