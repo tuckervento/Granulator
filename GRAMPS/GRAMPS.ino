@@ -1,6 +1,7 @@
 #include <SdFat.h>
 #include <SPI.h>
 #include <Audio.h>
+#include <math.h>
 
 //the flags
 //STATUS
@@ -16,6 +17,7 @@
 #define DECAYSETTING  0x08
 #define PAUSELENGTH   0x10
 #define PAUSEPOINT    0x20
+#define TIMESTRETCH   0x40
 
 //macros to manipulate the flags
 #define RESET_FLAGS(x)  (x = 0x00)
@@ -44,6 +46,8 @@
 #define PAUSELENGTH_HANDLE(x)   (x &= ~PAUSELENGTH)
 #define PAUSEPOINT_CHANGE(x)    (x |= PAUSEPOINT)
 #define PAUSEPOINT_HANDLE(x)    (x &= ~PAUSEPOINT)
+#define TIMESTRETCH_CHANGE(x)   (x |= TIMESTRETCH)
+#define TIMESTRETCH_HANDLE(x)   (x &= ~TIMESTRETCH)
 
 //flag-checkers
 //STATUS
@@ -59,15 +63,16 @@
 #define DID_DECAYSETTING(x)   (x & DECAYSETTING)
 #define DID_PAUSELENGTH(x)    (x & PAUSELENGTH)
 #define DID_PAUSEPOINT(x)     (x & PAUSEPOINT)
+#define DID_TIMESTRETCH(x)    (x & TIMESTRETCH)
 
 SdFat SD;
 
-uint8_t _statusBits = 0x00;
+uint8_t _statusBits = 0x01;
 uint8_t _paramChangeBits = 0x00;
 
 //pins
 uint8_t _buttonPlay = 53, _buttonSeek, _buttonReverse, _buttonPause;
-uint8_t _potVolume = A0, _potGrainTime, _potGrainRepeat, _potAttackSetting, _potDecaySetting, _potPauseLength, _potPausePoint;
+uint8_t _potVolume = A0, _potGrainTime, _potGrainRepeat, _potAttackSetting, _potDecaySetting, _potPauseLength, _potPausePoint, _potTimestretch;
 
 //parameters
 const uint16_t B = 1024; //fixed buffer size for segmentation
@@ -75,18 +80,18 @@ const uint16_t B = 1024; //fixed buffer size for segmentation
 uint16_t _volume = 1023;
 
 uint16_t _grainTime = 500;
-uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1, _pauseLoopLength = 2;
+uint8_t _attackSetting = 1, _decaySetting = 1, _grainRepeat = 1, _pauseLoopLength = 2, _timestretchValue = 100;
 unsigned long _grainPosition, _pauseLoopPoint;
 
 File _wavFile;
 
 void initInput()
 {
-  pinMode(_buttonPlay, INPUT);
+  //pinMode(_buttonPlay, INPUT);
   //pinMode(_buttonSeek, INPUT);
   //pinMode(_buttonReverse, INPUT);
   //pinMode(_buttonPause, INPUT);
-  attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
+  //attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
   //attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
   //attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
   //attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
@@ -114,14 +119,23 @@ void setup()
 
 void reverseBuffer(int16_t* p_buf, uint16_t p_size)
 {
-    uint16_t i = 0;
-    uint16_t j = p_size-1;
-    int16_t d;
-    while (i < j) {
-        d = p_buf[i];
-        p_buf[i++] = p_buf[j];
-        p_buf[j--] = d;
-    }
+  uint16_t i = 0;
+  uint16_t j = p_size-1;
+  int16_t d;
+  while (i < j) {
+    d = p_buf[i];
+    p_buf[i++] = p_buf[j];
+    p_buf[j--] = d;
+  }
+}
+
+void insertIntoBuffer(int16_t* p_buf, uint16_t p_size, int16_t p_value, uint16_t p_index)
+{
+  uint16_t i = p_size+1;
+  while (i > p_index) {
+    p_buf[i] = p_buf[--i];
+  }
+  p_buf[i] = p_value;
 }
 
 void granulate()
@@ -143,8 +157,13 @@ void granulate()
   uint8_t segmentCounter = 1;
   uint8_t pauseLoopCounter = 0, pointChangeHandled = 0;
 
+  float tsNPerSample, tsInterval, tsIntervalAverage;
+  uint16_t tsExtraSampleCounter = 0, tsIntervalSum = 0, tsIterator;
+  uint8_t tsIntervalN = 0, tsIntervalCounter = 0, tsIntervalValue, tsStretching = 0, tsPerSampleBase, tsPerSampleCount;
+  int16_t tsInterpolatedValue, tsScalingFactor;
+
   Serial.println("P");
-  while (_wavFile.available()) { //start of grain
+  while (_wavFile.available()) { //start of grain loop
     if (_paramChangeBits != 0x00) { //if we have a change, re-calculate necessary parameters
       if (DID_GRAINTIME(_paramChangeBits)) {
         S = 441*(_grainTime/10);
@@ -174,6 +193,10 @@ void granulate()
         //nothing to do?
         PAUSELENGTH_HANDLE(_paramChangeBits);
       }
+      if (DID_TIMESTRETCH(_paramChangeBits)) {
+        //?
+        TIMESTRETCH_HANDLE(_paramChangeBits);
+      }
     }
     //reset counters
     samplesToRead = B;
@@ -182,7 +205,7 @@ void granulate()
     decayCounter = decaySamples;
     segmentCounter = 1;
     
-    while (samplesRemaining > 0) { //start of segment
+    while (samplesRemaining > 0) { //start of segment loop
       if (!IS_PLAYING(_statusBits)) {
         return;
       }
@@ -193,8 +216,28 @@ void granulate()
       if (IS_REVERSE(_statusBits) && samplesToRead == B) {
         _wavFile.seek(_grainPosition + ((S - (segmentCounter * B)) * 2));
       }
+
+      tsExtraSampleCounter = 0;
+      if (_timestretchValue < 100) {
+        tsNPerSample = 100.0/(float)_timestretchValue;
+        samplesToRead = floor(((float)samplesToRead)/tsNPerSample);
+        tsNPerSample -= 1.0;
+        if (tsNPerSample >= 1.0) {
+          tsPerSampleBase = floor(tsNPerSample);
+          tsNPerSample -= (float)tsPerSampleBase;
+        }
+        else { tsPerSampleBase = 0; }
+        tsInterval = 1.0 / tsNPerSample;
+        tsIntervalValue = ceil(tsInterval);
+        tsIntervalCounter = 0;
+        tsIntervalSum = 0;
+        tsStretching = 1;
+        tsIntervalN = 0;
+      }
+
       //read into buffer
       _wavFile.read(buf, samplesToRead*2);
+
       if (IS_REVERSE(_statusBits)) {
         reverseBuffer(buf, samplesToRead);
       }
@@ -216,14 +259,59 @@ void granulate()
           buf[relativeEnvelopeCounter] *= (decayCounter/(float)decaySamples);
         }
       }
+      
+      if (tsStretching) {
+        if (tsPerSampleBase != 0) {
+          for (tsIterator = 0; tsIterator < (samplesToRead + tsExtraSampleCounter); tsIterator++) {
+            tsPerSampleCount = tsPerSampleBase;
+            if (++tsIntervalCounter == tsIntervalValue) {
+              tsIntervalCounter = 0;
+              tsPerSampleCount++;
+
+              if (tsIntervalValue != tsInterval) {
+                tsIntervalSum += tsIntervalValue;
+                tsIntervalAverage = (float)tsIntervalSum / (float) ++tsIntervalN;
+                if (tsIntervalAverage < tsInterval && tsIntervalValue < tsIntervalAverage) { tsIntervalValue++; }
+                else if (tsIntervalAverage > tsInterval && tsIntervalValue > tsIntervalAverage) { tsIntervalValue--; }
+              }
+            }
+
+            tsScalingFactor = ((float)buf[tsIterator+1] - (float)buf[tsIterator]) / tsPerSampleCount;
+            tsInterpolatedValue = buf[tsIterator];
+            while (tsPerSampleCount-- > 0) {
+              tsInterpolatedValue += tsScalingFactor;
+              insertIntoBuffer(buf, samplesToRead + tsExtraSampleCounter, tsInterpolatedValue, tsIterator);
+              tsExtraSampleCounter++;
+              tsIterator++;
+            }
+          }
+        }
+        else {
+          for (tsIterator = 0; tsIterator < (samplesToRead + tsExtraSampleCounter); tsIterator += tsIntervalValue) {
+            tsInterpolatedValue = floor(((float)(buf[tsIterator] + buf[tsIterator-1]))/2.0);
+            insertIntoBuffer(buf, samplesToRead + tsExtraSampleCounter, tsInterpolatedValue, tsIterator);
+
+            tsExtraSampleCounter++;
+
+            if (tsIntervalValue != tsInterval) {
+              tsIntervalSum += tsIntervalValue;
+              tsIntervalAverage = (float)tsIntervalSum / (float) ++tsIntervalN;
+              if (tsIntervalAverage < tsInterval && tsIntervalValue < tsIntervalAverage) { tsIntervalValue++; }
+              else if (tsIntervalAverage > tsInterval && tsIntervalValue >= tsIntervalAverage) { tsIntervalValue--; }
+            }
+          }
+        }
+        tsStretching = 0;
+      }
   
-      Audio.prepare(buf, samplesToRead, _volume);
-      Audio.write(buf, samplesToRead);
+      Audio.prepare(buf, samplesToRead + tsExtraSampleCounter, _volume);
+      Audio.write(buf, samplesToRead + tsExtraSampleCounter);
       
       segmentCounter++;
       //adjust samples remaining
       samplesRemaining -= samplesToRead;
       if (samplesRemaining < samplesToRead) { samplesToRead = samplesRemaining; }
+      else { samplesToRead = B; } //reset from timestretch
     }
 
     grainWriteCounter++;
