@@ -151,6 +151,7 @@ void granulate()
 
   uint16_t attackSamples = S * (_attackSetting / 100.0), decaySamples = S * (_decaySetting / 100.0);
   uint16_t relativeEnvelopeCounter, attackCounter = 0, decayCounter = 0, decayDifference;
+  int16_t deltaS;
   
   uint16_t samplesRemaining = S, samplesToRead = B;
   _grainPosition = _wavFile.position();
@@ -164,40 +165,6 @@ void granulate()
 
   Serial.println("P");
   while (_wavFile.available()) { //start of grain loop
-    if (_paramChangeBits != 0x00) { //if we have a change, re-calculate necessary parameters
-      if (DID_GRAINTIME(_paramChangeBits)) {
-        S = 441*(_grainTime/10);
-        attackSamples = S * (_attackSetting / 100.0);
-        decaySamples = S * (_decaySetting / 100.0);
-        GRAINTIME_HANDLE(_paramChangeBits);
-      }
-      if (DID_GRAINREPEAT(_paramChangeBits)) {
-        //nothing to do?
-        GRAINREPEAT_HANDLE(_paramChangeBits);
-      }
-      if (DID_ATTACKSETTING(_paramChangeBits)) {
-        attackSamples = S * (_attackSetting / 100.0);
-        ATTACKSETTING_HANDLE(_paramChangeBits);
-      }
-      if (DID_DECAYSETTING(_paramChangeBits)) {
-        decaySamples = S * (_decaySetting / 100.0);
-        DECAYSETTING_HANDLE(_paramChangeBits);
-      }
-      if (DID_PAUSEPOINT(_paramChangeBits) && !pointChangeHandled) {
-        _pauseLoopPoint = _grainPosition;
-        pauseLoopCounter = 0;
-        pointChangeHandled = 1; //debounce
-        PAUSEPOINT_HANDLE(_paramChangeBits);
-      }
-      if (DID_PAUSELENGTH(_paramChangeBits)) {
-        //nothing to do?
-        PAUSELENGTH_HANDLE(_paramChangeBits);
-      }
-      if (DID_TIMESTRETCH(_paramChangeBits)) {
-        //?
-        TIMESTRETCH_HANDLE(_paramChangeBits);
-      }
-    }
     //reset counters
     samplesToRead = B;
     samplesRemaining = S;
@@ -206,6 +173,42 @@ void granulate()
     segmentCounter = 1;
     
     while (samplesRemaining > 0) { //start of segment loop
+      if (_paramChangeBits != 0x00) { //if we have a change, re-calculate necessary parameters
+        if (DID_GRAINTIME(_paramChangeBits)) {
+          deltaS = S - 441*(_grainTime/10);
+          S -= deltaS;
+          samplesRemaining -= deltaS;
+          attackSamples = S * (_attackSetting / 100.0);
+          decaySamples = S * (_decaySetting / 100.0);
+          GRAINTIME_HANDLE(_paramChangeBits);
+        }
+        if (DID_GRAINREPEAT(_paramChangeBits)) {
+          //nothing to do?
+          GRAINREPEAT_HANDLE(_paramChangeBits);
+        }
+        if (DID_ATTACKSETTING(_paramChangeBits)) {
+          attackSamples = S * (_attackSetting / 100.0);
+          ATTACKSETTING_HANDLE(_paramChangeBits);
+        }
+        if (DID_DECAYSETTING(_paramChangeBits)) {
+          decaySamples = S * (_decaySetting / 100.0);
+          DECAYSETTING_HANDLE(_paramChangeBits);
+        }
+        if (DID_PAUSEPOINT(_paramChangeBits) && !pointChangeHandled) {
+          _pauseLoopPoint = _grainPosition;
+          pauseLoopCounter = 0;
+          pointChangeHandled = 1; //debounce
+          PAUSEPOINT_HANDLE(_paramChangeBits);
+        }
+        if (DID_PAUSELENGTH(_paramChangeBits)) {
+          //nothing to do?
+          PAUSELENGTH_HANDLE(_paramChangeBits);
+        }
+        if (DID_TIMESTRETCH(_paramChangeBits)) {
+          //?
+          TIMESTRETCH_HANDLE(_paramChangeBits);
+        }
+      }
       if (!IS_PLAYING(_statusBits)) {
         return;
       }
