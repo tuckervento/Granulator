@@ -1,9 +1,12 @@
 Granulator
 ==========
 
-Basic granulation algorithm
+Proof of concept and implementation of GRAMPS, a granular sampler.  Runs on an Arduino Due with a configured MicroSD reader.
 
 Written by Tucker Vento
+
+README for granulator.c
+-----
 
 Command line granulation processing<br/>
 Outputs a file called processed.wav
