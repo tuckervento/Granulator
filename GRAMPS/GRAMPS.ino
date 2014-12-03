@@ -18,6 +18,7 @@
 #define PAUSELENGTH   0x10
 #define PAUSEPOINT    0x20
 #define TIMESTRETCH   0x40
+#define FILENAME      0x80
 
 //macros to manipulate the flags
 #define RESET_FLAGS(x)  (x = 0x00)
@@ -48,6 +49,8 @@
 #define PAUSEPOINT_HANDLE(x)    (x &= ~PAUSEPOINT)
 #define TIMESTRETCH_CHANGE(x)   (x |= TIMESTRETCH)
 #define TIMESTRETCH_HANDLE(x)   (x &= ~TIMESTRETCH)
+#define FILENAME_CHANGE(x)      (x |= FILENAME)
+#define FILENAME_HANDLE(x)      (x &= ~FILENAME)
 
 //flag-checkers
 //STATUS
@@ -64,6 +67,7 @@
 #define DID_PAUSELENGTH(x)    (x & PAUSELENGTH)
 #define DID_PAUSEPOINT(x)     (x & PAUSEPOINT)
 #define DID_TIMESTRETCH(x)    (x & TIMESTRETCH)
+#define DID_FILENAME(x)       (x & FILENAME)
 
 SdFat SD;
 
@@ -71,11 +75,17 @@ uint8_t _statusBits = 0x01;
 uint8_t _paramChangeBits = 0x00;
 
 //pins
-uint8_t _buttonPlay = 53, _buttonSeek, _buttonReverse, _buttonPause;
+uint8_t _buttonPlay = 53, _buttonSeek, _buttonReverse, _buttonPause, _buttonFilename0, _buttonFilename1, _buttonFilename2, _buttonFilename3, _buttonFilenameGo;
 uint8_t _potVolume = A0, _potGrainTime, _potGrainRepeat, _potAttackSetting, _potDecaySetting, _potPauseLength, _potPausePoint, _potTimestretch;
 
 //parameters
 const uint16_t B = 1024; //fixed buffer size for segmentation
+
+const char C0 = '0';
+const char C1 = '1';
+
+//0000 - testtail, 0001 - test, 0010, testquiet
+char _filename[8] = { '0', '0', '0', '0', '.', 'w', 'a', 'v' };
 
 uint16_t _volume = 1023;
 
@@ -91,10 +101,16 @@ void initInput()
   //pinMode(_buttonSeek, INPUT);
   //pinMode(_buttonReverse, INPUT);
   //pinMode(_buttonPause, INPUT);
+  //pinMode(_buttonFilename0, INPUT);
+  //pinMode(_buttonFilename1, INPUT);
+  //pinMode(_buttonFilename2, INPUT);
+  //pinMode(_buttonFilename3, INPUT);
+  //pinMode(_buttonFilenameGo, INPUT);
   //attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
   //attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
   //attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
   //attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
+  //attachInterrupt(_buttonFilenameGo, checkButtonFilename, RISING);
 }
 
 void setup()
@@ -207,6 +223,9 @@ void granulate()
         if (DID_TIMESTRETCH(_paramChangeBits)) {
           //?
           TIMESTRETCH_HANDLE(_paramChangeBits);
+        }
+        if (DID_FILENAME(_paramChangeBits)) {
+          return;
         }
       }
       if (!IS_PLAYING(_statusBits)) {
@@ -339,7 +358,7 @@ void granulate()
 
 void loop()
 {
-  _wavFile = SD.open("testtail.wav");
+  _wavFile = SD.open(_filename);
   if (!_wavFile) {
     Serial.println("ER");
     while (true);
@@ -348,6 +367,11 @@ void loop()
   while(true) {
     _wavFile.seek(0);
     granulate();
+    if (DID_FILENAME(_paramChangeBits)) {
+      _wavFile.close();
+      _wavFile = SD.open(_filename);
+      FILENAME_HANDLE(_paramChangeBits);
+    }
     while(!IS_PLAYING(_statusBits));
   }
   
@@ -373,4 +397,13 @@ void checkButtonPause()
 {
   digitalRead(_buttonPause) ? PAUSED_ON(_statusBits) : PAUSED_OFF(_statusBits);
   if (IS_PAUSED(_statusBits)) { PAUSEPOINT_CHANGE(_paramChangeBits); } //for now
+}
+
+void checkButtonFilename()
+{
+  digitalRead(_buttonFilename0) ? _filename[0] = C1 : _filename[0] = C0;
+  digitalRead(_buttonFilename1) ? _filename[1] = C1 : _filename[1] = C0;
+  digitalRead(_buttonFilename2) ? _filename[2] = C1 : _filename[2] = C0;
+  digitalRead(_buttonFilename3) ? _filename[3] = C1 : _filename[3] = C0;
+  FILENAME_CHANGE(_paramChangeBits);
 }
