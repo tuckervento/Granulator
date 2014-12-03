@@ -35,21 +35,21 @@
 
 
 //PARAMCHANGE
-#define GRAINTIME_CHANGE(x)     (x |= GRAINTIME)
+#define GRAINTIME_SIGNAL(x)     (x |= GRAINTIME)
 #define GRAINTIME_HANDLE(x)     (x &= ~GRAINTIME)
-#define GRAINREPEAT_CHANGE(x)   (x |= GRAINREPEAT)
+#define GRAINREPEAT_SIGNAL(x)   (x |= GRAINREPEAT)
 #define GRAINREPEAT_HANDLE(x)   (x &= ~GRAINREPEAT)
-#define ATTACKSETTING_CHANGE(x) (x |= ATTACKSETTING)
+#define ATTACKSETTING_SIGNAL(x) (x |= ATTACKSETTING)
 #define ATTACKSETTING_HANDLE(x) (x &= ~ATTACKSETTING)
-#define DECAYSETTING_CHANGE(x)  (x |= DECAYSETTING)
+#define DECAYSETTING_SIGNAL(x)  (x |= DECAYSETTING)
 #define DECAYSETTING_HANDLE(x)  (x &= ~DECAYSETTING)
-#define PAUSELENGTH_CHANGE(x)   (x |= PAUSELENGTH)
+#define PAUSELENGTH_SIGNAL(x)   (x |= PAUSELENGTH)
 #define PAUSELENGTH_HANDLE(x)   (x &= ~PAUSELENGTH)
-#define PAUSEPOINT_CHANGE(x)    (x |= PAUSEPOINT)
+#define PAUSEPOINT_SIGNAL(x)    (x |= PAUSEPOINT)
 #define PAUSEPOINT_HANDLE(x)    (x &= ~PAUSEPOINT)
-#define TIMESTRETCH_CHANGE(x)   (x |= TIMESTRETCH)
+#define TIMESTRETCH_SIGNAL(x)   (x |= TIMESTRETCH)
 #define TIMESTRETCH_HANDLE(x)   (x &= ~TIMESTRETCH)
-#define FILENAME_CHANGE(x)      (x |= FILENAME)
+#define FILENAME_SIGNAL(x)      (x |= FILENAME)
 #define FILENAME_HANDLE(x)      (x &= ~FILENAME)
 
 //flag-checkers
@@ -71,13 +71,13 @@
 
 SdFat SD;
 
-uint8_t _statusBits = 0x01;
+uint8_t _statusBits = 0x00;
 uint8_t _paramChangeBits = 0x00;
 
 //pins
-uint8_t _buttonPlay = 53, _buttonSeek, _buttonReverse, _buttonPause, _buttonFilename0, _buttonFilename1, _buttonFilename2, _buttonFilename3, _buttonFilenameGo;
-uint8_t _potVolume = A0, _potGrainTime, _potGrainRepeat, _potAttackSetting, _potDecaySetting, _potPauseLength, _potPausePoint, _potTimestretch;
-
+uint8_t _buttonPlay = 53, _buttonSeek = 51, _buttonReverse = 49, _buttonPause = 47, _buttonResetParams = 45, _buttonFilename3 = 52, _buttonFilename2 = 50, _buttonFilename1 = 48, _buttonFilename0 = 46, _buttonFilenameGo = 44;
+uint8_t _potVolume = A0, _potGrainTime = A1, _potGrainRepeat = A2, _potAttackSetting = A3, _potDecaySetting = A4, _potPauseLength = A5, _potPausePoint = A6, _potTimestretch = A7;//extra:A8
+uint16_t _potVolumePrevVal = 0, _potGrainTimePrevVal = 0, _potGrainRepeatPrevVal = 0, _potAttackSettingPrevVal = 0, _potDecaySettingPrevVal = 0, _potPauseLengthPrevVal = 0, _potPausePointPrevVal = 0, _potTimestretchPrevVal = 0;
 //parameters
 const uint16_t B = 1024; //fixed buffer size for segmentation
 
@@ -111,20 +111,24 @@ File _wavFile;
 
 void initInput()
 {
-  //pinMode(_buttonPlay, INPUT);
-  //pinMode(_buttonSeek, INPUT);
-  //pinMode(_buttonReverse, INPUT);
-  //pinMode(_buttonPause, INPUT);
-  //pinMode(_buttonFilename0, INPUT);
-  //pinMode(_buttonFilename1, INPUT);
-  //pinMode(_buttonFilename2, INPUT);
-  //pinMode(_buttonFilename3, INPUT);
-  //pinMode(_buttonFilenameGo, INPUT);
-  //attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
-  //attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
-  //attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
-  //attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
-  //attachInterrupt(_buttonFilenameGo, checkButtonFilename, RISING);
+  pinMode(_buttonPlay, INPUT);
+  pinMode(_buttonSeek, INPUT);
+  pinMode(_buttonReverse, INPUT);
+  pinMode(_buttonPause, INPUT);
+  pinMode(_buttonResetParams, INPUT);
+  pinMode(_buttonFilename0, INPUT);
+  pinMode(_buttonFilename1, INPUT);
+  pinMode(_buttonFilename2, INPUT);
+  pinMode(_buttonFilename3, INPUT);
+  pinMode(_buttonFilenameGo, INPUT);
+  attachInterrupt(_buttonPlay, checkButtonPlay, CHANGE);
+  attachInterrupt(_buttonSeek, checkButtonSeek, CHANGE);
+  attachInterrupt(_buttonReverse, checkButtonReverse, CHANGE);
+  attachInterrupt(_buttonPause, checkButtonPause, CHANGE);
+  attachInterrupt(_buttonResetParams, resetParams, RISING);
+  attachInterrupt(_buttonFilenameGo, checkButtonFilename, RISING);
+  //analogReadResolution(12); seems like we don't want this much accuracy if our circuits are so noisy
+  checkParams();
 }
 
 void setup()
@@ -170,11 +174,6 @@ void insertIntoBuffer(int16_t* p_buf, uint16_t p_size, int16_t p_value, uint16_t
 
 void granulate()
 {
-  //Force grain time to 100ms right now
-  //So samples/grain = 4410
-  //not sure of unsigned short vs uint16_t, etc...
-  //i believe unsigned short is faster, but uint16_t is more memory conservative?
-  //but i'm not sure
   uint8_t grainWriteCounter = 0;
   uint16_t S = 441*(_grainTime/10); // Number of samples to read in block
   int16_t buf[B];
@@ -203,6 +202,7 @@ void granulate()
     segmentCounter = 1;
     
     while (samplesRemaining > 0) { //start of segment loop
+      checkParams();
       if (_paramChangeBits != 0x00) { //if we have a change, re-calculate necessary parameters
         if (DID_GRAINTIME(_paramChangeBits)) {
           deltaS = S - 441*(_grainTime/10);
@@ -379,8 +379,11 @@ void loop()
   }
 
   while(true) {
-    _wavFile.seek(0);
-    granulate();
+    Serial.println("here");
+    if (IS_PLAYING(_statusBits)) {
+      _wavFile.seek(0);
+      granulate();
+    }
     if (DID_FILENAME(_paramChangeBits)) {
       _wavFile.close();
       switch(_nameSelect) {
@@ -438,7 +441,7 @@ void loop()
       }
       FILENAME_HANDLE(_paramChangeBits);
     }
-    while(!IS_PLAYING(_statusBits));
+    //while(!IS_PLAYING(_statusBits)) {};
   }
   
   _wavFile.close();
@@ -447,6 +450,8 @@ void loop()
 void checkButtonPlay()
 {
   digitalRead(_buttonPlay) ? PLAYING_ON(_statusBits) : PLAYING_OFF(_statusBits);
+  if (IS_PLAYING(_statusBits)) { Serial.println("checked"); }
+  else { Serial.println("nope"); }
 }
 
 void checkButtonSeek()
@@ -462,7 +467,7 @@ void checkButtonReverse()
 void checkButtonPause()
 {
   digitalRead(_buttonPause) ? PAUSED_ON(_statusBits) : PAUSED_OFF(_statusBits);
-  if (IS_PAUSED(_statusBits)) { PAUSEPOINT_CHANGE(_paramChangeBits); } //for now
+  if (IS_PAUSED(_statusBits)) { PAUSEPOINT_SIGNAL(_paramChangeBits); } //for now
 }
 
 void checkButtonFilename()
@@ -471,5 +476,95 @@ void checkButtonFilename()
   digitalRead(_buttonFilename1) ? _nameSelect |= 0x02 : _nameSelect &= ~0x02;
   digitalRead(_buttonFilename2) ? _nameSelect |= 0x04 : _nameSelect &= ~0x04;
   digitalRead(_buttonFilename3) ? _nameSelect |= 0x08 : _nameSelect &= ~0x08;
-  FILENAME_CHANGE(_paramChangeBits);
+  FILENAME_SIGNAL(_paramChangeBits);
+}
+
+void resetParams()
+{
+  _timestretchValue = 100;
+  _potTimestretchPrevVal = 1018;
+}
+
+void checkParams()
+{
+  uint16_t val;
+  int8_t diff;
+
+  val = analogRead(_potGrainTime);
+  diff = _potGrainTimePrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //20ms - 2000ms?  In increments of 20ms
+    _potGrainTimePrevVal = val;
+    val /= 10;
+    _grainTime = (val > 0) ? val*20 : 20;
+    GRAINTIME_SIGNAL(_paramChangeBits);
+    Serial.println(_grainTime);
+  }
+
+  val = analogRead(_potGrainRepeat);
+  diff = _potGrainRepeatPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //1-10
+    _potGrainRepeatPrevVal = val;
+    val /= 100;
+    _grainRepeat = (val > 0) ? val : 1;
+    GRAINREPEAT_SIGNAL(_paramChangeBits);
+  }
+
+  val = analogRead(_potAttackSetting);
+  diff = _potAttackSettingPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //1-100
+    _potAttackSettingPrevVal = val;
+    val /= 10;
+    _attackSetting = (val <= 100) ? val : 100;
+    ATTACKSETTING_SIGNAL(_paramChangeBits);
+  }
+
+  val = analogRead(_potDecaySetting);
+  diff = _potDecaySettingPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //1-100
+    _potDecaySettingPrevVal = val;
+    val /= 10;
+    _decaySetting = (val <= 100) ? val : 100;
+    if ((_attackSetting + _decaySetting) > 100) { //attack eats decay
+      _decaySetting = 100 - _attackSetting;
+    }
+    DECAYSETTING_SIGNAL(_paramChangeBits);
+  }
+
+  val = analogRead(_potPauseLength);
+  diff = _potPauseLengthPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //1-10
+    _potPauseLengthPrevVal = val;
+    val /= 100;
+    _pauseLoopLength = (val > 0) ? val : 1;
+    PAUSELENGTH_SIGNAL(_paramChangeBits);
+  }
+
+  val = analogRead(_potPausePoint);
+  diff = _potPausePointPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    //what do you plan to do here
+  }
+
+  val = analogRead(_potTimestretch);
+  diff = _potTimestretchPrevVal - val;
+  if (diff > 13 || diff < -13) {
+    _potTimestretchPrevVal = val;
+    val /= 10;
+    _timestretchValue = (val > 100) ? 100 : val;
+    if (!_timestretchValue) { _timestretchValue = 1; }
+    TIMESTRETCH_SIGNAL(_paramChangeBits);
+    //1-100
+  }
+
+  val = analogRead(_potVolume);
+  diff = _potVolumePrevVal - val;
+  if (diff > 13 || diff < -13) {
+    _volume = val;
+    _potVolumePrevVal = val;
+  }
 }
