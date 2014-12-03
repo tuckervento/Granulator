@@ -352,7 +352,7 @@ void granulate()
 
     grainWriteCounter++;
     //seek back if we need to re-do this grain
-    if (grainWriteCounter < _grainRepeat) {
+    if (grainWriteCounter < _grainRepeat || _grainRepeat == 99) {
       _wavFile.seek(_grainPosition);
     }
     else {
@@ -507,7 +507,7 @@ void checkParams()
     //1-10
     _potGrainRepeatPrevVal = val;
     val /= 100;
-    _grainRepeat = (val > 0) ? val : 1;
+    _grainRepeat = (val > 0) ? ((val >= 10) ? 99 : val) : 1; //infinite repeat at max setting
     GRAINREPEAT_SIGNAL(_paramChangeBits);
   }
 
