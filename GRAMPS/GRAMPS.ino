@@ -81,11 +81,25 @@ uint8_t _potVolume = A0, _potGrainTime, _potGrainRepeat, _potAttackSetting, _pot
 //parameters
 const uint16_t B = 1024; //fixed buffer size for segmentation
 
-const char C0 = '0';
-const char C1 = '1';
+//filenames...
+const char* NAME00 = "0000";
+const char* NAME01 = "0001";
+const char* NAME02 = "0010";
+const char* NAME03 = "0011";
+const char* NAME04 = "0100";
+const char* NAME05 = "0101";
+const char* NAME06 = "0110";
+const char* NAME07 = "0111";
+const char* NAME08 = "1000";
+const char* NAME09 = "1001";
+const char* NAME10 = "1010";
+const char* NAME11 = "1011";
+const char* NAME12 = "1100";
+const char* NAME13 = "1101";
+const char* NAME14 = "1110";
+const char* NAME15 = "1111";
 
-//0000 - testtail, 0001 - test, 0010, testquiet
-char _filename[8] = { '0', '0', '0', '0', '.', 'w', 'a', 'v' };
+uint8_t _nameSelect = 0x00;
 
 uint16_t _volume = 1023;
 
@@ -358,7 +372,7 @@ void granulate()
 
 void loop()
 {
-  _wavFile = SD.open(_filename);
+  _wavFile = SD.open(NAME00);
   if (!_wavFile) {
     Serial.println("ER");
     while (true);
@@ -369,7 +383,59 @@ void loop()
     granulate();
     if (DID_FILENAME(_paramChangeBits)) {
       _wavFile.close();
-      _wavFile = SD.open(_filename);
+      switch(_nameSelect) {
+        case (0x00):
+          _wavFile = SD.open(NAME00);
+          break;
+        case (0x01):
+          _wavFile = SD.open(NAME01);
+          break;
+        case (0x02):
+          _wavFile = SD.open(NAME02);
+          break;
+        case (0x03):
+          _wavFile = SD.open(NAME03);
+          break;
+        case (0x04):
+          _wavFile = SD.open(NAME04);
+          break;
+        case (0x05):
+          _wavFile = SD.open(NAME05);
+          break;
+        case (0x06):
+          _wavFile = SD.open(NAME06);
+          break;
+        case (0x07):
+          _wavFile = SD.open(NAME07);
+          break;
+        case (0x08):
+          _wavFile = SD.open(NAME08);
+          break;
+        case (0x09):
+          _wavFile = SD.open(NAME09);
+          break;
+        case (0x0A):
+          _wavFile = SD.open(NAME10);
+          break;
+        case (0x0B):
+          _wavFile = SD.open(NAME11);
+          break;
+        case (0x0C):
+          _wavFile = SD.open(NAME12);
+          break;
+        case (0x0D):
+          _wavFile = SD.open(NAME13);
+          break;
+        case (0x0E):
+          _wavFile = SD.open(NAME14);
+          break;
+        case (0x0F):
+          _wavFile = SD.open(NAME15);
+          break;
+        default:
+          _wavFile = SD.open(NAME00);
+          break;
+      }
       FILENAME_HANDLE(_paramChangeBits);
     }
     while(!IS_PLAYING(_statusBits));
@@ -401,9 +467,9 @@ void checkButtonPause()
 
 void checkButtonFilename()
 {
-  digitalRead(_buttonFilename0) ? _filename[0] = C1 : _filename[0] = C0;
-  digitalRead(_buttonFilename1) ? _filename[1] = C1 : _filename[1] = C0;
-  digitalRead(_buttonFilename2) ? _filename[2] = C1 : _filename[2] = C0;
-  digitalRead(_buttonFilename3) ? _filename[3] = C1 : _filename[3] = C0;
+  digitalRead(_buttonFilename0) ? _nameSelect |= 0x01 : _nameSelect &= ~0x01;
+  digitalRead(_buttonFilename1) ? _nameSelect |= 0x02 : _nameSelect &= ~0x02;
+  digitalRead(_buttonFilename2) ? _nameSelect |= 0x04 : _nameSelect &= ~0x04;
+  digitalRead(_buttonFilename3) ? _nameSelect |= 0x08 : _nameSelect &= ~0x08;
   FILENAME_CHANGE(_paramChangeBits);
 }
