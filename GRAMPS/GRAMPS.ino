@@ -504,10 +504,10 @@ void checkParams()
   val = analogRead(_potGrainRepeat);
   diff = _potGrainRepeatPrevVal - val;
   if (diff > 13 || diff < -13) {
-    //1-10
+    //1-8
     _potGrainRepeatPrevVal = val;
     val /= 100;
-    _grainRepeat = (val > 0) ? ((val >= 10) ? 99 : val) : 1; //infinite repeat at max setting
+    _grainRepeat = (val > 0) ? ((val >= 10) ? 99 : ((val <= 2) ? 1 : val - 1)) : 1; //infinite repeat at max setting
     GRAINREPEAT_SIGNAL(_paramChangeBits);
   }
 
